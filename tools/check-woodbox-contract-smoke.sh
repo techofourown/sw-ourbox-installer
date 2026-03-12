@@ -12,7 +12,9 @@ MISSION_DIR="${TMP}/mission"
 OS_DIR="${MISSION_DIR}/artifacts/os"
 AIRGAP_DIR="${MISSION_DIR}/artifacts/airgap"
 FAKE_WOODBOX="${TMP}/woodbox"
-mkdir -p "${OS_DIR}" "${AIRGAP_DIR}" "${FAKE_WOODBOX}/tools" "${FAKE_WOODBOX}/deploy"
+AIRGAP_SOURCE_DIR="${TMP}/airgap-source"
+mkdir -p "${OS_DIR}" "${AIRGAP_DIR}" "${FAKE_WOODBOX}/tools" "${FAKE_WOODBOX}/deploy" \
+  "${AIRGAP_SOURCE_DIR}/k3s" "${AIRGAP_SOURCE_DIR}/platform/images"
 
 cp "${ROOT}/vendor/woodbox/strict-kv-metadata.py" "${TMP}/strict-kv-metadata.py"
 chmod +x "${TMP}/strict-kv-metadata.py"
@@ -50,8 +52,27 @@ GITHUB_RUN_ID=
 GITHUB_RUN_ATTEMPT=
 EOF
 
-printf 'airgap bytes\n' > "${AIRGAP_DIR}/airgap-platform.tar.gz"
-printf '%s\n' 'OURBOX_AIRGAP_PLATFORM_SOURCE=https://github.com/techofourown/sw-ourbox-os' > "${AIRGAP_DIR}/manifest.env"
+cat > "${AIRGAP_SOURCE_DIR}/manifest.env" <<'EOF'
+OURBOX_AIRGAP_PLATFORM_SOURCE=https://github.com/techofourown/sw-ourbox-os
+OURBOX_AIRGAP_PLATFORM_REVISION=abc123def456
+OURBOX_AIRGAP_PLATFORM_VERSION=v0.0.1
+OURBOX_AIRGAP_PLATFORM_CREATED=2026-03-12T00:00:00Z
+OURBOX_PLATFORM_CONTRACT_DIGEST=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+AIRGAP_PLATFORM_ARCH=amd64
+K3S_VERSION=v1.35.0+k3s1
+OURBOX_PLATFORM_PROFILE=demo-apps
+OURBOX_PLATFORM_IMAGES_LOCK_PATH=platform/images.lock.json
+OURBOX_PLATFORM_IMAGES_LOCK_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+EOF
+printf '#!/bin/sh\nexit 0\n' > "${AIRGAP_SOURCE_DIR}/k3s/k3s"
+chmod +x "${AIRGAP_SOURCE_DIR}/k3s/k3s"
+printf 'fixture airgap images\n' > "${AIRGAP_SOURCE_DIR}/k3s/k3s-airgap-images-amd64.tar"
+printf '{"images":[]}\n' > "${AIRGAP_SOURCE_DIR}/platform/images.lock.json"
+printf 'PROFILE=demo-apps\n' > "${AIRGAP_SOURCE_DIR}/platform/profile.env"
+printf 'fixture image tar\n' > "${AIRGAP_SOURCE_DIR}/platform/images/platform-demo.tar"
+tar -C "${AIRGAP_SOURCE_DIR}" -czf "${AIRGAP_DIR}/airgap-platform.tar.gz" k3s platform manifest.env
+printf '%s  %s\n' "$(sha256sum "${AIRGAP_DIR}/airgap-platform.tar.gz" | awk '{print $1}')" "airgap-platform.tar.gz" > "${AIRGAP_DIR}/airgap-platform.tar.gz.sha256"
+cp -f "${AIRGAP_SOURCE_DIR}/manifest.env" "${AIRGAP_DIR}/manifest.env"
 
 cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
 {

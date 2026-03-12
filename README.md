@@ -48,7 +48,7 @@ Useful flags:
 - `--airgap-channel CHANNEL` to choose a host-selected contract-matching airgap bundle instead of the baked bundle
 - `--mission-only` to stop after staging the mission directory and manifest
 - `--flash-device /dev/...` to pass the composed ISO to the Woodbox adapter for flashing
-- `--adapter-repo-root /path/to/img-ourbox-woodbox` when the target repo is not in the default workspace location
+- `--adapter-repo-root /path/to/img-ourbox-woodbox` when the target repo is not beside this repo, nested inside it, or at `/techofourown/img-ourbox-woodbox`
 
 Cache behavior:
 
