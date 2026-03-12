@@ -15,7 +15,7 @@ AIRGAP_REF=""
 OUTPUT_DIR="${ROOT}/out/woodbox"
 MISSION_ONLY=0
 FLASH_DEVICE=""
-ADAPTER_REPO_ROOT="${WOODBOX_REPO_ROOT:-/techofourown/img-ourbox-woodbox}"
+ADAPTER_REPO_ROOT=""
 VENDORED_ADAPTER_ROOT="${ROOT}/vendor/woodbox"
 VENDORED_METADATA_PARSER="${VENDORED_ADAPTER_ROOT}/strict-kv-metadata.py"
 MISSION_SCHEMA="${ROOT}/schemas/mission-manifest.schema.json"
@@ -40,11 +40,65 @@ Options:
   --airgap-ref REF            Exact airgap bundle ref to pull instead of using the baked bundle
   --output-dir DIR            Directory for staged mission output
   --adapter-repo-root DIR     Path to the authoritative img-ourbox-woodbox checkout
+                              (otherwise autodiscover nested, sibling, then /techofourown)
   --mission-only              Stop after staging the mission directory and manifest
   --flash-device DEV          Pass the composed ISO to the Woodbox adapter for flashing
   -h, --help                  Show help
 EOF
 }
+
+canonicalize_dir() {
+  (
+    cd "$1"
+    pwd -P
+  )
+}
+
+is_git_worktree() {
+  local candidate="$1"
+  git -C "${candidate}" rev-parse --is-inside-work-tree >/dev/null 2>&1
+}
+
+resolve_woodbox_repo_root() {
+  local explicit_root="${1:-}"
+  local env_root="${2:-}"
+  local candidate=""
+  local -a candidates=()
+
+  if [[ -n "${explicit_root}" ]]; then
+    candidates=("${explicit_root}")
+  elif [[ -n "${env_root}" ]]; then
+    candidates=("${env_root}")
+  else
+    candidates=(
+      "${ROOT}/img-ourbox-woodbox"
+      "${ROOT}/../img-ourbox-woodbox"
+      "/techofourown/img-ourbox-woodbox"
+    )
+  fi
+
+  for candidate in "${candidates[@]}"; do
+    [[ -d "${candidate}" ]] || continue
+    if is_git_worktree "${candidate}"; then
+      canonicalize_dir "${candidate}"
+      return 0
+    fi
+  done
+
+  if [[ -n "${explicit_root}" ]]; then
+    die "authoritative Woodbox repo not found: ${explicit_root}"
+  fi
+
+  if [[ -n "${env_root}" ]]; then
+    die "authoritative Woodbox repo not found: ${env_root}"
+  fi
+
+  die "authoritative Woodbox repo not found; tried ${ROOT}/img-ourbox-woodbox, ${ROOT}/../img-ourbox-woodbox, and /techofourown/img-ourbox-woodbox"
+}
+
+if [[ "${OURBOX_PREPARE_INSTALLER_LIBRARY_ONLY:-0}" == "1" ]]; then
+  return 0 2>/dev/null || exit 0
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -113,7 +167,7 @@ need_cmd sha256sum
 need_cmd tar
 need_cmd find
 
-[[ -d "${ADAPTER_REPO_ROOT}" ]] || die "authoritative Woodbox repo not found: ${ADAPTER_REPO_ROOT}"
+ADAPTER_REPO_ROOT="$(resolve_woodbox_repo_root "${ADAPTER_REPO_ROOT}" "${WOODBOX_REPO_ROOT:-}")"
 [[ -f "${VENDORED_ADAPTER_ROOT}/adapter.json" ]] || die "vendored Woodbox adapter not found: ${VENDORED_ADAPTER_ROOT}/adapter.json"
 [[ -f "${VENDORED_ADAPTER_ROOT}/compose-media.sh" ]] || die "vendored Woodbox compose script not found: ${VENDORED_ADAPTER_ROOT}/compose-media.sh"
 [[ -f "${VENDORED_ADAPTER_ROOT}/validate-media.sh" ]] || die "vendored Woodbox validate script not found: ${VENDORED_ADAPTER_ROOT}/validate-media.sh"

@@ -18,6 +18,7 @@ jobs:
           bash -n tools/prepare-installer-media.sh
           bash -n tools/cache.sh
           bash -n tools/vendor-adapter.sh
+          bash -n tools/check-adapter-repo-discovery-smoke.sh
           bash -n tools/check-cache-policy-smoke.sh
           bash -n tools/check-vendored-woodbox-pin.sh
           bash -n tools/check-woodbox-contract-smoke.sh
@@ -45,6 +46,9 @@ jobs:
 
       - name: Cache policy smoke
         run: bash tools/check-cache-policy-smoke.sh
+
+      - name: Adapter repo discovery smoke
+        run: bash tools/check-adapter-repo-discovery-smoke.sh
 
       - name: Woodbox contract smoke
         run: bash tools/check-woodbox-contract-smoke.sh
