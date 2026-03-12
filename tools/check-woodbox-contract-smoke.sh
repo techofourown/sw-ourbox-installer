@@ -188,11 +188,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 payload=""
 payload_meta=""
 mission_dir=""
+out_iso=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --embed-payload) payload="$2"; shift 2 ;;
     --embed-payload-meta) payload_meta="$2"; shift 2 ;;
     --embed-mission-dir) mission_dir="$2"; shift 2 ;;
+    --out-iso) out_iso="$2"; shift 2 ;;
     *) echo "unexpected arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -200,9 +202,10 @@ done
 [[ -f "${payload_meta}" ]] || { echo "payload meta missing" >&2; exit 1; }
 [[ -f "${mission_dir}/mission-manifest.json" ]] || { echo "mission manifest missing" >&2; exit 1; }
 [[ "${payload_meta}" == */os.meta.env ]] || { echo "explicit payload meta handoff missing" >&2; exit 1; }
-mkdir -p "${ROOT}/deploy"
-printf 'iso bytes\n' > "${ROOT}/deploy/installer-ourbox-woodbox-x86-too-obx-wbx-base-ju3xk8-prod-v0.0.1.iso"
-printf 'checksum\n' > "${ROOT}/deploy/installer-ourbox-woodbox-x86-too-obx-wbx-base-ju3xk8-prod-v0.0.1.iso.sha256"
+[[ -n "${out_iso}" ]] || { echo "missing explicit out-iso" >&2; exit 1; }
+mkdir -p "$(dirname "${out_iso}")"
+printf 'iso bytes\n' > "${out_iso}"
+printf 'checksum\n' > "${out_iso}.sha256"
 EOF
 chmod +x "${FAKE_WOODBOX}/tools/build-installer-iso.sh"
 

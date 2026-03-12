@@ -49,6 +49,8 @@ When run from a terminal, the host composer now mirrors the old installer UX:
 - after OS selection, it prompts for the airgap bundle with the same flow
 - then it lists removable USB target media, makes you choose by number, and
   requires `SELECT` before the compose/flash step continues
+- the normal no-flag path flashes removable media; it does not keep extra build
+  artifacts by default
 
 Passing `--target`, `--os-channel`, or `--airgap-channel` changes the default
 choice shown in those prompts. Passing `--os-ref` or `--airgap-ref` skips the
@@ -61,10 +63,12 @@ Useful flags:
 - `--os-ref REF` to choose an explicit OS artifact ref instead of the interactive picker
 - `--airgap-channel CHANNEL` to change the default host-selected airgap lane offered in the prompt
 - `--airgap-ref REF` to choose an explicit airgap bundle ref instead of the interactive picker or baked default
-- `--output-dir DIR` to override the default output location under `./out/<target>`
-- `--mission-only` to stop after staging the mission directory and manifest
+- `--mission-only` to stage only the mission directory under `./out/<target>` (or `--output-dir`)
+- `--compose-only` to compose installer media to disk under `./out/<target>` (or `--output-dir`) without flashing
+- `--output-dir DIR` to keep staged mission or composed media in a specific directory for those explicit non-default modes
 - `--flash-device /dev/...` to bypass the interactive USB picker and flash that exact device
 - `--adapter-repo-root /path/to/img-ourbox-woodbox` when the target repo is not beside this repo, nested inside it, or at `/techofourown/img-ourbox-woodbox`
+- `--help` to print the optional CI/dev flags without changing the normal no-flag operator flow
 
 Cache behavior:
 

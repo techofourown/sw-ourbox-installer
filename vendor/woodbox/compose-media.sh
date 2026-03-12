@@ -135,6 +135,11 @@ OURBOX_SKU_SLUG="$(echo "${OURBOX_SKU}" | tr '[:upper:]' '[:lower:]')"
 OURBOX_VARIANT_SLUG="$(echo "${OURBOX_VARIANT}" | tr '[:upper:]' '[:lower:]')"
 OUT_ISO="${ROOT}/deploy/installer-${OURBOX_PRODUCT}-${OURBOX_DEVICE}-${OURBOX_TARGET_SLUG}-${OURBOX_SKU_SLUG}-${OURBOX_VARIANT_SLUG}-${OURBOX_VERSION}.iso"
 OUT_SHA="${OUT_ISO}.sha256"
+if [[ -n "${OUTPUT_DIR}" ]]; then
+  mkdir -p "${OUTPUT_DIR}"
+  OUT_ISO="${OUTPUT_DIR}/$(basename "${OUT_ISO}")"
+  OUT_SHA="${OUT_ISO}.sha256"
+fi
 
 log "Composing Woodbox mission media"
 OURBOX_PRODUCT="${OURBOX_PRODUCT}" \
@@ -146,18 +151,11 @@ OURBOX_VERSION="${OURBOX_VERSION}" \
   "${ROOT}/tools/build-installer-iso.sh" \
     --embed-payload "${OS_PAYLOAD}" \
     --embed-payload-meta "${OS_META_ENV}" \
+    --out-iso "${OUT_ISO}" \
     --embed-mission-dir "${MISSION_DIR}"
 
 [[ -f "${OUT_ISO}" ]] || die "expected composed ISO not found: ${OUT_ISO}"
 [[ -f "${OUT_SHA}" ]] || die "expected composed ISO checksum not found: ${OUT_SHA}"
-
-if [[ -n "${OUTPUT_DIR}" ]]; then
-  mkdir -p "${OUTPUT_DIR}"
-  cp -f "${OUT_ISO}" "${OUTPUT_DIR}/"
-  cp -f "${OUT_SHA}" "${OUTPUT_DIR}/"
-  OUT_ISO="${OUTPUT_DIR}/$(basename "${OUT_ISO}")"
-  OUT_SHA="${OUTPUT_DIR}/$(basename "${OUT_SHA}")"
-fi
 
 if [[ -n "${FLASH_DEVICE}" ]]; then
   "${ROOT}/tools/flash-installer-media.sh" "${OUT_ISO}" "${FLASH_DEVICE}"

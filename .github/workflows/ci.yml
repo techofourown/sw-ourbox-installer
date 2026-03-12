@@ -20,6 +20,7 @@ jobs:
           bash -n tools/vendor-adapter.sh
           bash -n tools/check-adapter-repo-discovery-smoke.sh
           bash -n tools/check-cache-policy-smoke.sh
+          bash -n tools/check-flash-first-policy-smoke.sh
           bash -n tools/check-interactive-selection-smoke.sh
           bash -n tools/check-vendored-woodbox-pin.sh
           bash -n tools/check-woodbox-contract-smoke.sh
@@ -47,6 +48,9 @@ jobs:
 
       - name: Cache policy smoke
         run: bash tools/check-cache-policy-smoke.sh
+
+      - name: Flash-first policy smoke
+        run: bash tools/check-flash-first-policy-smoke.sh
 
       - name: Interactive selection smoke
         run: bash tools/check-interactive-selection-smoke.sh

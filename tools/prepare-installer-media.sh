@@ -14,6 +14,7 @@ AIRGAP_CHANNEL=""
 AIRGAP_REF=""
 OUTPUT_DIR=""
 MISSION_ONLY=0
+COMPOSE_ONLY=0
 FLASH_DEVICE=""
 ADAPTER_REPO_ROOT=""
 VENDORED_ADAPTER_ROOT="${ROOT}/vendor/woodbox"
@@ -32,6 +33,12 @@ Usage: $0 [options]
 
 Phase-one unified host-side mission prep for OurBox targets.
 
+Normal operator flow:
+  $0
+
+This prompts for target, OS, airgap, and removable media, then composes and
+flashes mission media. Non-flash modes are available only behind explicit flags.
+
 Options:
   --target TARGET             Preselect the target type for the UI
                               (currently only woodbox is supported)
@@ -43,11 +50,13 @@ Options:
                               non-interactive resolution after OS selection
                               (default: baked bundle from the selected OS)
   --airgap-ref REF            Exact airgap bundle ref to pull instead of using the baked bundle
-  --output-dir DIR            Directory for staged mission output
+  --output-dir DIR            Keep staged mission or composed media under DIR
+                              (used only by explicit non-default modes)
   --adapter-repo-root DIR     Path to the authoritative img-ourbox-woodbox checkout
                               (otherwise autodiscover nested, sibling, then /techofourown)
-  --mission-only              Stop after staging the mission directory and manifest
-  --flash-device DEV          Pass the composed ISO to the Woodbox adapter for flashing
+  --mission-only              Stage the mission directory only; do not compose or flash media
+  --compose-only              Compose mission media to disk but do not flash it
+  --flash-device DEV          Flash to the given device without interactive media selection
   -h, --help                  Show help
 EOF
 }
@@ -102,6 +111,10 @@ resolve_woodbox_repo_root() {
 }
 
 interactive_target_selection_enabled() {
+  [[ -t 0 && -t 1 ]]
+}
+
+interactive_selection_enabled() {
   [[ -t 0 && -t 1 ]]
 }
 
@@ -160,6 +173,15 @@ determine_target() {
   fi
 }
 
+require_flash_path_or_explicit_mode() {
+  if [[ "${MISSION_ONLY}" == "1" || "${COMPOSE_ONLY}" == "1" || -n "${FLASH_DEVICE}" ]]; then
+    return 0
+  fi
+
+  interactive_selection_enabled && return 0
+  die "non-interactive run requires --flash-device, --compose-only, or --mission-only"
+}
+
 if [[ "${OURBOX_PREPARE_INSTALLER_LIBRARY_ONLY:-0}" == "1" ]]; then
   return 0 2>/dev/null || exit 0
 fi
@@ -205,6 +227,10 @@ while [[ $# -gt 0 ]]; do
       MISSION_ONLY=1
       shift
       ;;
+    --compose-only)
+      COMPOSE_ONLY=1
+      shift
+      ;;
     --flash-device)
       [[ $# -ge 2 ]] || die "--flash-device requires a value"
       FLASH_DEVICE="$2"
@@ -223,8 +249,12 @@ done
 
 determine_target
 [[ "${TARGET}" == "woodbox" ]] || die "phase one only supports target 'woodbox'"
-[[ -n "${OUTPUT_DIR}" ]] || OUTPUT_DIR="$(default_output_dir_for_target "${TARGET}")"
+[[ "${MISSION_ONLY}" == "0" || "${COMPOSE_ONLY}" == "0" ]] || die "--mission-only cannot be combined with --compose-only"
 [[ "${MISSION_ONLY}" == "0" || -z "${FLASH_DEVICE}" ]] || die "--flash-device cannot be combined with --mission-only"
+[[ "${COMPOSE_ONLY}" == "0" || -z "${FLASH_DEVICE}" ]] || die "--flash-device cannot be combined with --compose-only"
+if [[ -z "${OUTPUT_DIR}" && ( "${MISSION_ONLY}" == "1" || "${COMPOSE_ONLY}" == "1" ) ]]; then
+  OUTPUT_DIR="$(default_output_dir_for_target "${TARGET}")"
+fi
 
 need_cmd python3
 need_cmd git
@@ -241,8 +271,11 @@ ADAPTER_REPO_ROOT="$(resolve_woodbox_repo_root "${ADAPTER_REPO_ROOT}" "${WOODBOX
 [[ -f "${MISSION_SCHEMA}" ]] || die "mission schema not found: ${MISSION_SCHEMA}"
 [[ -f "${MISSION_SCHEMA_VALIDATOR}" ]] || die "mission schema validator not found: ${MISSION_SCHEMA_VALIDATOR}"
 
-TMP_ROOT="$(mktemp -d)"
+WORK_ROOT="${ROOT}/cache/work"
+mkdir -p "${WORK_ROOT}"
+TMP_ROOT="$(mktemp -d "${WORK_ROOT}/prepare-installer-media.XXXXXX")"
 trap 'rm -rf "${TMP_ROOT}"' EXIT
+require_flash_path_or_explicit_mode
 
 substrate_head_revision="$(git -C "${ADAPTER_REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
 substrate_revision="${substrate_head_revision}"
@@ -664,10 +697,6 @@ if not rows:
 rows.sort(key=lambda item: item[0], reverse=True)
 print(rows[0][1])
 PY
-}
-
-interactive_selection_enabled() {
-  [[ -t 0 && -t 1 ]]
 }
 
 normalize_release_channel() {
@@ -1702,41 +1731,46 @@ bash "${VENDORED_ADAPTER_ROOT}/validate-media.sh" \
   --os-payload "${OS_STAGE_DIR}/os-payload.tar.gz" \
   --os-meta-env "${OS_STAGE_DIR}/os.meta.env"
 
-mkdir -p "${OUTPUT_DIR}"
-FINAL_MISSION_DIR="${OUTPUT_DIR}/mission"
-rm -rf "${FINAL_MISSION_DIR}"
-cp -a "${MISSION_DIR}" "${FINAL_MISSION_DIR}"
-
-log "Mission directory prepared: ${FINAL_MISSION_DIR}"
 log "Selected OS artifact: ${SELECTED_OS_PINNED_REF} (${SELECTED_OS_SELECTION_SOURCE})"
 log "Selected airgap bundle: ${SELECTED_AIRGAP_PINNED_REF} (${SELECTED_AIRGAP_SELECTION_SOURCE})"
 
 if [[ "${MISSION_ONLY}" == "1" ]]; then
+  mkdir -p "${OUTPUT_DIR}"
+  FINAL_MISSION_DIR="${OUTPUT_DIR}/mission"
+  rm -rf "${FINAL_MISSION_DIR}"
+  cp -a "${MISSION_DIR}" "${FINAL_MISSION_DIR}"
+  log "Mission directory prepared: ${FINAL_MISSION_DIR}"
   log "Mission-only mode requested; skipping media compose"
   offer_cache_cleanup
   exit 0
 fi
 
 if [[ -z "${FLASH_DEVICE}" ]]; then
-  if interactive_selection_enabled; then
+  if [[ "${COMPOSE_ONLY}" == "1" ]]; then
+    log "Compose-only mode requested; skipping target media selection"
+  elif interactive_selection_enabled; then
     log "Entering interactive target media selection."
     select_target_flash_device_interactive
     validate_target_flash_device_or_die "${FLASH_DEVICE}"
     log "Using target media device: ${FLASH_DEVICE}"
   else
-    log "No flash device selected in non-interactive mode; composing mission media only"
+    die "non-interactive run requires --flash-device, --compose-only, or --mission-only"
   fi
 else
   validate_target_flash_device_or_die "${FLASH_DEVICE}"
   log "Using target media device: ${FLASH_DEVICE}"
 fi
 
+COMPOSE_OUTPUT_DIR="${STAGING_OUTPUT_DIR}/media"
+if [[ -n "${OUTPUT_DIR}" ]]; then
+  COMPOSE_OUTPUT_DIR="${OUTPUT_DIR}/media"
+fi
 compose_cmd=(
   "${VENDORED_ADAPTER_ROOT}/compose-media.sh"
   --mission-dir "${MISSION_DIR}"
   --os-payload "${OS_STAGE_DIR}/os-payload.tar.gz"
   --os-meta-env "${OS_STAGE_DIR}/os.meta.env"
-  --output-dir "${STAGING_OUTPUT_DIR}/media"
+  --output-dir "${COMPOSE_OUTPUT_DIR}"
 )
 if [[ -n "${FLASH_DEVICE}" ]]; then
   compose_cmd+=(--flash-device "${FLASH_DEVICE}")
@@ -1747,9 +1781,10 @@ WOODBOX_ADAPTER_ROOT="${VENDORED_ADAPTER_ROOT}" \
 WOODBOX_REPO_ROOT="${ADAPTER_REPO_ROOT}" \
   "${compose_cmd[@]}"
 
-FINAL_MEDIA_DIR="${OUTPUT_DIR}/media"
-rm -rf "${FINAL_MEDIA_DIR}"
-cp -a "${STAGING_OUTPUT_DIR}/media" "${FINAL_MEDIA_DIR}"
-log "Mission media output directory: ${FINAL_MEDIA_DIR}"
+if [[ "${COMPOSE_ONLY}" == "1" || -n "${OUTPUT_DIR}" ]]; then
+  log "Mission media output directory: ${COMPOSE_OUTPUT_DIR}"
+else
+  log "Mission media flashed from managed scratch workspace; no persistent ISO was kept"
+fi
 
 offer_cache_cleanup
