@@ -34,9 +34,13 @@ Phase-one unified host-side mission prep for Woodbox.
 
 Options:
   --target woodbox            Target to compose (only woodbox is supported now)
-  --os-channel CHANNEL        OS channel to use when --os-ref is not set (default: stable)
+  --os-channel CHANNEL        Preferred OS channel for interactive selection or
+                              non-interactive resolution when --os-ref is not set
+                              (default: stable)
   --os-ref REF                Exact OS artifact ref to pull instead of catalog/channel resolution
-  --airgap-channel CHANNEL    Airgap bundle channel to resolve on the host after OS selection
+  --airgap-channel CHANNEL    Preferred airgap channel for interactive selection or
+                              non-interactive resolution after OS selection
+                              (default: baked bundle from the selected OS)
   --airgap-ref REF            Exact airgap bundle ref to pull instead of using the baked bundle
   --output-dir DIR            Directory for staged mission output
   --adapter-repo-root DIR     Path to the authoritative img-ourbox-woodbox checkout
@@ -178,8 +182,11 @@ ADAPTER_REPO_ROOT="$(resolve_woodbox_repo_root "${ADAPTER_REPO_ROOT}" "${WOODBOX
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "${TMP_ROOT}"' EXIT
 
-substrate_revision="$(git -C "${ADAPTER_REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
+substrate_head_revision="$(git -C "${ADAPTER_REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
+substrate_revision="${substrate_head_revision}"
+substrate_dirty=0
 if [[ -n "$(git -C "${ADAPTER_REPO_ROOT}" status --short 2>/dev/null || true)" ]]; then
+  substrate_dirty=1
   substrate_revision="${substrate_revision}-dirty"
 fi
 substrate_repo="$(git -C "${ADAPTER_REPO_ROOT}" remote get-url github 2>/dev/null || printf '%s\n' "${ADAPTER_REPO_ROOT}")"
@@ -192,8 +199,12 @@ if [[ -f "${VENDORED_PIN}" ]]; then
   source "${VENDORED_PIN}"
   ADAPTER_SOURCE_REPO="${SOURCE_REPO:-${ADAPTER_SOURCE_REPO}}"
   ADAPTER_SOURCE_REVISION="${SOURCE_REVISION:-${ADAPTER_SOURCE_REVISION}}"
-  if [[ "${SOURCE_REVISION:-unknown}" != "${substrate_revision}" ]]; then
-    log "WARNING: vendored woodbox adapter pin (${SOURCE_REVISION:-unknown}) does not match local substrate repo revision (${substrate_revision})"
+  if [[ "${SOURCE_REVISION:-unknown}" != "${substrate_head_revision}" ]]; then
+    if (( substrate_dirty )); then
+      log "WARNING: vendored woodbox adapter pin (${SOURCE_REVISION:-unknown}) does not match local substrate repo revision (${substrate_revision})"
+    elif ! git -C "${ADAPTER_REPO_ROOT}" merge-base --is-ancestor "${SOURCE_REVISION:-unknown}" "${substrate_head_revision}" >/dev/null 2>&1; then
+      log "WARNING: vendored woodbox adapter pin (${SOURCE_REVISION:-unknown}) does not match local substrate repo revision (${substrate_revision})"
+    fi
   fi
 fi
 
@@ -220,12 +231,18 @@ if airgap_channel and airgap_channel not in airgap_tags:
 values = [
     official["os_repo"],
     official["os_catalog_tag"],
-    os_tags[os_channel],
+    os_tags["stable"],
+    os_tags["beta"],
+    os_tags["nightly"],
+    os_tags["exp-labs"],
     adapter["expected_os_artifact_type"],
     adapter["expected_airgap_arch"],
     official["airgap_repo"],
     official["airgap_catalog_tag"],
-    airgap_tags.get(airgap_channel, ""),
+    airgap_tags["stable"],
+    airgap_tags["beta"],
+    airgap_tags["nightly"],
+    airgap_tags["exp-labs"],
     str(adapter.get("minimum_media_size_bytes", "")),
     adapter.get("output_kind", ""),
     json.dumps(adapter.get("runtime_prompts_kept", [])),
@@ -234,18 +251,24 @@ print("\n".join(values))
 PY
 )"
 mapfile -t adapter_fields <<<"${adapter_dump}"
-[[ "${#adapter_fields[@]}" -eq 11 ]] || die "failed to load vendored woodbox adapter metadata"
+[[ "${#adapter_fields[@]}" -eq 17 ]] || die "failed to load vendored woodbox adapter metadata"
 OS_REPO="${adapter_fields[0]}"
 OS_CATALOG_TAG="${adapter_fields[1]}"
-OS_CHANNEL_TAG="${adapter_fields[2]}"
-EXPECTED_OS_ARTIFACT_TYPE="${adapter_fields[3]}"
-EXPECTED_AIRGAP_ARCH="${adapter_fields[4]}"
-AIRGAP_REPO="${adapter_fields[5]}"
-AIRGAP_CATALOG_TAG="${adapter_fields[6]}"
-AIRGAP_CHANNEL_TAG="${adapter_fields[7]}"
-MINIMUM_MEDIA_SIZE_BYTES="${adapter_fields[8]}"
-OUTPUT_KIND="${adapter_fields[9]}"
-ADAPTER_RUNTIME_PROMPTS_JSON="${adapter_fields[10]}"
+OS_CHANNEL_TAG_STABLE="${adapter_fields[2]}"
+OS_CHANNEL_TAG_BETA="${adapter_fields[3]}"
+OS_CHANNEL_TAG_NIGHTLY="${adapter_fields[4]}"
+OS_CHANNEL_TAG_EXP_LABS="${adapter_fields[5]}"
+EXPECTED_OS_ARTIFACT_TYPE="${adapter_fields[6]}"
+EXPECTED_AIRGAP_ARCH="${adapter_fields[7]}"
+AIRGAP_REPO="${adapter_fields[8]}"
+AIRGAP_CATALOG_TAG="${adapter_fields[9]}"
+AIRGAP_CHANNEL_TAG_STABLE="${adapter_fields[10]}"
+AIRGAP_CHANNEL_TAG_BETA="${adapter_fields[11]}"
+AIRGAP_CHANNEL_TAG_NIGHTLY="${adapter_fields[12]}"
+AIRGAP_CHANNEL_TAG_EXP_LABS="${adapter_fields[13]}"
+MINIMUM_MEDIA_SIZE_BYTES="${adapter_fields[14]}"
+OUTPUT_KIND="${adapter_fields[15]}"
+ADAPTER_RUNTIME_PROMPTS_JSON="${adapter_fields[16]}"
 
 case "${OURBOX_CACHE_REUSE_POLICY}" in
   ask|always|never) ;;
@@ -389,6 +412,77 @@ print(rows[0][1])
 PY
 }
 
+interactive_selection_enabled() {
+  [[ -t 0 && -t 1 ]]
+}
+
+normalize_release_channel() {
+  local channel="${1:-}"
+
+  case "${channel}" in
+    x86-stable) printf '%s\n' "stable" ;;
+    x86-beta) printf '%s\n' "beta" ;;
+    x86-nightly) printf '%s\n' "nightly" ;;
+    x86-exp-labs) printf '%s\n' "exp-labs" ;;
+    *) printf '%s\n' "${channel}" ;;
+  esac
+}
+
+os_channel_tag_for() {
+  local channel="${1:-}"
+
+  case "${channel}" in
+    stable) printf '%s\n' "${OS_CHANNEL_TAG_STABLE}" ;;
+    beta) printf '%s\n' "${OS_CHANNEL_TAG_BETA}" ;;
+    nightly) printf '%s\n' "${OS_CHANNEL_TAG_NIGHTLY}" ;;
+    exp-labs) printf '%s\n' "${OS_CHANNEL_TAG_EXP_LABS}" ;;
+    *) printf '%s\n' "x86-${channel}" ;;
+  esac
+}
+
+airgap_channel_tag_for() {
+  local channel="${1:-}"
+
+  case "${channel}" in
+    stable) printf '%s\n' "${AIRGAP_CHANNEL_TAG_STABLE}" ;;
+    beta) printf '%s\n' "${AIRGAP_CHANNEL_TAG_BETA}" ;;
+    nightly) printf '%s\n' "${AIRGAP_CHANNEL_TAG_NIGHTLY}" ;;
+    exp-labs) printf '%s\n' "${AIRGAP_CHANNEL_TAG_EXP_LABS}" ;;
+    *) printf '%s\n' "${channel}-${EXPECTED_AIRGAP_ARCH}" ;;
+  esac
+}
+
+list_os_catalog_entries() {
+  local catalog_tsv="$1"
+
+  python3 - <<'PY' "${catalog_tsv}"
+import csv
+import re
+import sys
+
+catalog_tsv = sys.argv[1]
+rows = []
+with open(catalog_tsv, "r", encoding="utf-8") as handle:
+    reader = csv.DictReader(handle, delimiter="\t")
+    for row in reader:
+        row_channel = (row.get("channel") or "").strip()
+        tag = (row.get("tag") or "").strip()
+        created = (row.get("created") or "").strip()
+        version = (row.get("version") or "").strip()
+        contract = (row.get("platform_contract_digest") or "").strip()
+        pinned_ref = (row.get("pinned_ref") or "").strip()
+        if not created:
+            continue
+        if not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", pinned_ref):
+            continue
+        rows.append((created, row_channel, tag, version, contract, pinned_ref))
+
+rows.sort(key=lambda item: (item[0], item[2]), reverse=True)
+for created, row_channel, tag, version, contract, pinned_ref in rows:
+    print("\t".join((row_channel, tag, created, version, contract, pinned_ref)))
+PY
+}
+
 select_airgap_ref_from_catalog() {
   local catalog_tsv="$1"
   local channel="$2"
@@ -428,11 +522,265 @@ print(rows[0][1])
 PY
 }
 
-determine_os_ref() {
+list_airgap_catalog_entries() {
+  local catalog_tsv="$1"
+  local required_contract_digest="$2"
+  local required_arch="$3"
+
+  python3 - <<'PY' "${catalog_tsv}" "${required_contract_digest}" "${required_arch}"
+import csv
+import re
+import sys
+
+catalog_tsv, digest, arch = sys.argv[1:]
+rows = []
+with open(catalog_tsv, "r", encoding="utf-8") as handle:
+    reader = csv.DictReader(handle, delimiter="\t")
+    for row in reader:
+        row_channel = (row.get("channel") or "").strip()
+        tag = (row.get("tag") or "").strip()
+        created = (row.get("created") or "").strip()
+        version = (row.get("version") or "").strip()
+        row_arch = (row.get("arch") or "").strip()
+        row_digest = (row.get("platform_contract_digest") or "").strip()
+        pinned_ref = (row.get("pinned_ref") or "").strip()
+        if not created:
+            continue
+        if row_arch != arch or row_digest != digest:
+            continue
+        if not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", pinned_ref):
+            continue
+        rows.append((created, row_channel, tag, version, row_digest, pinned_ref))
+
+rows.sort(key=lambda item: (item[0], item[2]), reverse=True)
+for created, row_channel, tag, version, row_digest, pinned_ref in rows:
+    print("\t".join((row_channel, tag, created, version, row_digest, pinned_ref)))
+PY
+}
+
+resolve_os_channel_ref() {
+  local channel="$1"
   local catalog_cache_dir=""
   local catalog_tsv=""
   local catalog_ref=""
+  local channel_tag_ref="${OS_REPO}:$(os_channel_tag_for "${channel}")"
 
+  if try_cache_pull_oci_artifact "${OS_REPO}:${OS_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
+    catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
+    if [[ -n "${catalog_tsv}" ]]; then
+      catalog_ref="$(select_os_ref_from_catalog "${catalog_tsv}" "${channel}" || true)"
+      if is_pinned_ref "${catalog_ref}"; then
+        SELECTED_OS_SELECTION_SOURCE="catalog"
+        SELECTED_OS_RELEASE_CHANNEL="${channel}"
+        SELECTED_OS_REF="${catalog_ref}"
+        return 0
+      fi
+    fi
+    log "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} had no valid pinned row for channel ${channel}; falling back to channel tag"
+  else
+    log "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} unavailable; falling back to channel tag"
+  fi
+
+  SELECTED_OS_SELECTION_SOURCE="channel-tag"
+  SELECTED_OS_RELEASE_CHANNEL="${channel}"
+  SELECTED_OS_REF="${channel_tag_ref}"
+}
+
+show_os_default_choice() {
+  local ref="$1"
+
+  echo
+  echo "Host-side OS selection"
+  echo "Default source : ${SELECTED_OS_SELECTION_SOURCE:-pending}"
+  echo "Default: install '${ref}'"
+  echo "Options:"
+  echo "  [ENTER] Use default"
+  echo "  c       Choose channel (prefers newest catalog row for that lane)"
+  echo "  l       List from catalog (if available)"
+  echo "  r       Enter custom OCI ref (tag or digest)"
+  echo "  o       Override OS repo (custom registry/fork)"
+  echo "  q       Quit"
+  echo
+}
+
+choose_os_channel_interactive() {
+  local pick=""
+  local custom_tag=""
+
+  echo "Channels:"
+  echo "  1) stable (${OS_CHANNEL_TAG_STABLE}) (recommended)"
+  echo "  2) beta (${OS_CHANNEL_TAG_BETA})"
+  echo "  3) nightly (${OS_CHANNEL_TAG_NIGHTLY})"
+  echo "  4) exp-labs (${OS_CHANNEL_TAG_EXP_LABS})"
+  echo "  5) custom tag name"
+
+  read -r -p "Select channel [1-5]: " pick
+  case "${pick}" in
+    1|"") OS_CHANNEL="stable" ;;
+    2) OS_CHANNEL="beta" ;;
+    3) OS_CHANNEL="nightly" ;;
+    4) OS_CHANNEL="exp-labs" ;;
+    5)
+      read -r -p "Enter tag: " custom_tag
+      [[ -n "${custom_tag}" ]] || {
+        log "Tag cannot be empty."
+        return 1
+      }
+      SELECTED_OS_REF="${OS_REPO}:${custom_tag}"
+      SELECTED_OS_SELECTION_SOURCE="channel-tag"
+      SELECTED_OS_RELEASE_CHANNEL=""
+      return 0
+      ;;
+    *)
+      log "Invalid choice."
+      return 1
+      ;;
+  esac
+
+  resolve_os_channel_ref "${OS_CHANNEL}"
+}
+
+select_os_ref_from_catalog_interactive() {
+  local catalog_cache_dir=""
+  local catalog_tsv=""
+  local pick=""
+  local chosen=""
+  local normalized_channel=""
+  local channel=""
+  local tag=""
+  local created=""
+  local version=""
+  local contract=""
+  local pinned_ref=""
+  local i=1
+  local -a entries=()
+
+  if ! try_cache_pull_oci_artifact "${OS_REPO}:${OS_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
+    log "Catalog unavailable; skipping list."
+    return 1
+  fi
+
+  catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
+  mapfile -t entries < <(list_os_catalog_entries "${catalog_tsv}")
+  if [[ "${#entries[@]}" -eq 0 ]]; then
+    log "Catalog pulled (${OS_REPO}:${OS_CATALOG_TAG}) but contained no valid entries."
+    return 1
+  fi
+
+  echo
+  echo "Catalog entries (${OS_REPO}:${OS_CATALOG_TAG}):"
+  for chosen in "${entries[@]}"; do
+    IFS=$'\t' read -r channel tag created version contract pinned_ref <<<"${chosen}"
+    printf "  %d) %-12s %-30s %s %s %s\n" "${i}" "${channel}" "${tag}" "${version}" "${created}" "${contract}"
+    i=$((i + 1))
+  done
+
+  read -r -p "Choose entry [1-${#entries[@]}] (or ENTER to cancel): " pick
+  [[ -n "${pick}" ]] || return 1
+  [[ "${pick}" =~ ^[0-9]+$ ]] || {
+    log "Invalid selection."
+    return 1
+  }
+  if (( pick < 1 || pick > ${#entries[@]} )); then
+    log "Selection out of range."
+    return 1
+  fi
+
+  chosen="${entries[$((pick - 1))]}"
+  IFS=$'\t' read -r channel tag created version contract pinned_ref <<<"${chosen}"
+  normalized_channel="$(normalize_release_channel "${channel}")"
+  OS_CHANNEL="${normalized_channel}"
+  SELECTED_OS_REF="${pinned_ref}"
+  SELECTED_OS_SELECTION_SOURCE="catalog"
+  SELECTED_OS_RELEASE_CHANNEL="${normalized_channel}"
+  log "Selected ${SELECTED_OS_REF} (channel=${normalized_channel}, version=${version}, contract=${contract})"
+}
+
+prompt_custom_os_ref_interactive() {
+  local ref=""
+
+  read -r -p "Enter full OCI ref (e.g., repo:tag or repo@sha256:...): " ref
+  [[ -n "${ref}" && "${ref}" != *[[:space:]]* ]] || {
+    log "Ref must be a single-line OCI ref without whitespace."
+    return 1
+  }
+
+  SELECTED_OS_REF="${ref}"
+  SELECTED_OS_SELECTION_SOURCE="operator-override"
+  SELECTED_OS_RELEASE_CHANNEL=""
+}
+
+override_os_repo_interactive() {
+  local next_repo=""
+  local next_catalog="x86-catalog"
+  local user_catalog=""
+
+  read -r -p "Enter OCI repo (e.g., ghcr.io/org/ourbox-os): " next_repo
+  [[ -n "${next_repo}" ]] || {
+    log "Repository cannot be empty."
+    return 1
+  }
+
+  OS_REPO="${next_repo}"
+  read -r -p "Catalog tag [${next_catalog}]: " user_catalog
+  if [[ -n "${user_catalog}" ]]; then
+    OS_CATALOG_TAG="${user_catalog}"
+  else
+    OS_CATALOG_TAG="${next_catalog}"
+  fi
+
+  log "OS repo override set to ${OS_REPO}"
+}
+
+interactive_select_os_ref() {
+  local choice=""
+  local default_ref=""
+  local default_source=""
+  local default_channel=""
+
+  SELECTED_OS_REF=""
+  SELECTED_OS_SELECTION_SOURCE=""
+  SELECTED_OS_RELEASE_CHANNEL=""
+
+  while [[ -z "${SELECTED_OS_REF}" ]]; do
+    resolve_os_channel_ref "${OS_CHANNEL}"
+    default_ref="${SELECTED_OS_REF}"
+    default_source="${SELECTED_OS_SELECTION_SOURCE}"
+    default_channel="${SELECTED_OS_RELEASE_CHANNEL}"
+    SELECTED_OS_REF=""
+
+    show_os_default_choice "${default_ref}"
+    read -r -p "Choice: " choice
+
+    case "${choice}" in
+      "")
+        SELECTED_OS_REF="${default_ref}"
+        SELECTED_OS_SELECTION_SOURCE="${default_source}"
+        SELECTED_OS_RELEASE_CHANNEL="${default_channel}"
+        ;;
+      c)
+        choose_os_channel_interactive || true
+        ;;
+      l)
+        select_os_ref_from_catalog_interactive || true
+        ;;
+      r)
+        prompt_custom_os_ref_interactive || true
+        ;;
+      o)
+        override_os_repo_interactive || true
+        ;;
+      q|Q)
+        die "Mission compose aborted by user"
+        ;;
+      *)
+        log "Unknown option."
+        ;;
+    esac
+  done
+}
+
+determine_os_ref() {
   if [[ -n "${OS_REF}" ]]; then
     SELECTED_OS_SELECTION_SOURCE="os-ref"
     SELECTED_OS_RELEASE_CHANNEL=""
@@ -440,32 +788,47 @@ determine_os_ref() {
     return 0
   fi
 
-  if try_cache_pull_oci_artifact "${OS_REPO}:${OS_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
-    catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
-    if [[ -n "${catalog_tsv}" ]]; then
-      catalog_ref="$(select_os_ref_from_catalog "${catalog_tsv}" "${OS_CHANNEL}" || true)"
-      if is_pinned_ref "${catalog_ref}"; then
-        SELECTED_OS_SELECTION_SOURCE="catalog"
-        SELECTED_OS_RELEASE_CHANNEL="${OS_CHANNEL}"
-        SELECTED_OS_REF="${catalog_ref}"
-        return 0
-      fi
-    fi
-    log "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} had no valid pinned row for channel ${OS_CHANNEL}; falling back to channel tag"
-  else
-    log "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} unavailable; falling back to channel tag"
+  if interactive_selection_enabled; then
+    interactive_select_os_ref
+    return 0
   fi
 
-  SELECTED_OS_SELECTION_SOURCE="channel-tag"
-  SELECTED_OS_RELEASE_CHANNEL="${OS_CHANNEL}"
-  SELECTED_OS_REF="${OS_REPO}:${OS_CHANNEL_TAG}"
+  resolve_os_channel_ref "${OS_CHANNEL}"
 }
 
-determine_airgap_ref() {
+resolve_airgap_channel_ref() {
   local required_contract_digest="$1"
+  local channel="$2"
   local catalog_cache_dir=""
   local catalog_tsv=""
   local catalog_ref=""
+  local channel_tag_ref="${AIRGAP_REPO}:$(airgap_channel_tag_for "${channel}")"
+
+  if try_cache_pull_oci_artifact "${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
+    catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
+    if [[ -n "${catalog_tsv}" ]]; then
+      catalog_ref="$(select_airgap_ref_from_catalog "${catalog_tsv}" "${channel}" "${required_contract_digest}" "${EXPECTED_AIRGAP_ARCH}" || true)"
+      if is_pinned_ref "${catalog_ref}"; then
+        SELECTED_AIRGAP_SELECTION_MODE="host-selected"
+        SELECTED_AIRGAP_SELECTION_SOURCE="catalog"
+        SELECTED_AIRGAP_RELEASE_CHANNEL="${channel}"
+        SELECTED_AIRGAP_REF="${catalog_ref}"
+        return 0
+      fi
+    fi
+    log "Airgap catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} had no valid pinned row for channel ${channel} and contract ${required_contract_digest}; falling back to channel tag"
+  else
+    log "Airgap catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} unavailable; falling back to channel tag"
+  fi
+
+  SELECTED_AIRGAP_SELECTION_MODE="host-selected"
+  SELECTED_AIRGAP_SELECTION_SOURCE="channel-tag"
+  SELECTED_AIRGAP_RELEASE_CHANNEL="${channel}"
+  SELECTED_AIRGAP_REF="${channel_tag_ref}"
+}
+
+resolve_default_airgap_ref() {
+  local required_contract_digest="$1"
 
   if [[ -n "${AIRGAP_REF}" ]]; then
     SELECTED_AIRGAP_SELECTION_MODE="explicit-ref"
@@ -483,41 +846,248 @@ determine_airgap_ref() {
     return 0
   fi
 
-  if try_cache_pull_oci_artifact "${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
-    catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
-    if [[ -n "${catalog_tsv}" ]]; then
-      catalog_ref="$(select_airgap_ref_from_catalog "${catalog_tsv}" "${AIRGAP_CHANNEL}" "${required_contract_digest}" "${EXPECTED_AIRGAP_ARCH}" || true)"
-      if is_pinned_ref "${catalog_ref}"; then
-        SELECTED_AIRGAP_SELECTION_MODE="host-selected"
-        SELECTED_AIRGAP_SELECTION_SOURCE="catalog"
-        SELECTED_AIRGAP_RELEASE_CHANNEL="${AIRGAP_CHANNEL}"
-        SELECTED_AIRGAP_REF="${catalog_ref}"
-        return 0
-      fi
-    fi
-    log "Airgap catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} had no valid pinned row for channel ${AIRGAP_CHANNEL} and contract ${required_contract_digest}; falling back to channel tag"
-  else
-    log "Airgap catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} unavailable; falling back to channel tag"
+  resolve_airgap_channel_ref "${required_contract_digest}" "${AIRGAP_CHANNEL}"
+}
+
+show_airgap_default_choice() {
+  local ref="$1"
+
+  echo
+  echo "Host-side airgap selection"
+  echo "Default source : ${SELECTED_AIRGAP_SELECTION_SOURCE:-pending}"
+  echo "Default: use airgap bundle '${ref}'"
+  echo "Options:"
+  echo "  [ENTER] Use default"
+  echo "  c       Choose channel (prefers newest contract-matching catalog row for that lane)"
+  echo "  l       List from catalog (if available)"
+  echo "  r       Enter custom OCI ref (tag or digest)"
+  echo "  o       Override airgap repo (custom registry/fork)"
+  echo "  q       Quit"
+  echo
+}
+
+choose_airgap_channel_interactive() {
+  local required_contract_digest="$1"
+  local pick=""
+  local custom_tag=""
+
+  echo "Channels:"
+  echo "  1) stable (${AIRGAP_CHANNEL_TAG_STABLE}) (recommended)"
+  echo "  2) beta (${AIRGAP_CHANNEL_TAG_BETA})"
+  echo "  3) nightly (${AIRGAP_CHANNEL_TAG_NIGHTLY})"
+  echo "  4) exp-labs (${AIRGAP_CHANNEL_TAG_EXP_LABS})"
+  echo "  5) custom tag name"
+
+  read -r -p "Select channel [1-5]: " pick
+  case "${pick}" in
+    1|"") AIRGAP_CHANNEL="stable" ;;
+    2) AIRGAP_CHANNEL="beta" ;;
+    3) AIRGAP_CHANNEL="nightly" ;;
+    4) AIRGAP_CHANNEL="exp-labs" ;;
+    5)
+      read -r -p "Enter tag: " custom_tag
+      [[ -n "${custom_tag}" ]] || {
+        log "Tag cannot be empty."
+        return 1
+      }
+      SELECTED_AIRGAP_SELECTION_MODE="host-selected"
+      SELECTED_AIRGAP_SELECTION_SOURCE="channel-tag"
+      SELECTED_AIRGAP_RELEASE_CHANNEL=""
+      SELECTED_AIRGAP_REF="${AIRGAP_REPO}:${custom_tag}"
+      return 0
+      ;;
+    *)
+      log "Invalid choice."
+      return 1
+      ;;
+  esac
+
+  resolve_airgap_channel_ref "${required_contract_digest}" "${AIRGAP_CHANNEL}"
+}
+
+select_airgap_ref_from_catalog_interactive() {
+  local required_contract_digest="$1"
+  local catalog_cache_dir=""
+  local catalog_tsv=""
+  local pick=""
+  local chosen=""
+  local channel=""
+  local tag=""
+  local created=""
+  local version=""
+  local contract=""
+  local pinned_ref=""
+  local i=1
+  local -a entries=()
+
+  if ! try_cache_pull_oci_artifact "${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
+    log "Airgap catalog unavailable; skipping list."
+    return 1
   fi
 
+  catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
+  mapfile -t entries < <(list_airgap_catalog_entries "${catalog_tsv}" "${required_contract_digest}" "${EXPECTED_AIRGAP_ARCH}")
+  if [[ "${#entries[@]}" -eq 0 ]]; then
+    log "Airgap catalog pulled (${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}) but contained no matching rows for arch=${EXPECTED_AIRGAP_ARCH} contract=${required_contract_digest}."
+    return 1
+  fi
+
+  echo
+  echo "Airgap catalog entries (${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}):"
+  for chosen in "${entries[@]}"; do
+    IFS=$'\t' read -r channel tag created version contract pinned_ref <<<"${chosen}"
+    printf "  %d) %-10s %-24s %s %s %s\n" "${i}" "${channel}" "${tag}" "${version}" "${created}" "${contract}"
+    i=$((i + 1))
+  done
+
+  read -r -p "Choose entry [1-${#entries[@]}] (or ENTER to cancel): " pick
+  [[ -n "${pick}" ]] || return 1
+  [[ "${pick}" =~ ^[0-9]+$ ]] || {
+    log "Invalid selection."
+    return 1
+  }
+  if (( pick < 1 || pick > ${#entries[@]} )); then
+    log "Selection out of range."
+    return 1
+  fi
+
+  chosen="${entries[$((pick - 1))]}"
+  IFS=$'\t' read -r channel tag created version contract pinned_ref <<<"${chosen}"
+  AIRGAP_CHANNEL="$(normalize_release_channel "${channel}")"
   SELECTED_AIRGAP_SELECTION_MODE="host-selected"
-  SELECTED_AIRGAP_SELECTION_SOURCE="channel-tag"
+  SELECTED_AIRGAP_SELECTION_SOURCE="catalog"
   SELECTED_AIRGAP_RELEASE_CHANNEL="${AIRGAP_CHANNEL}"
-  SELECTED_AIRGAP_REF="${AIRGAP_REPO}:${AIRGAP_CHANNEL_TAG}"
+  SELECTED_AIRGAP_REF="${pinned_ref}"
+  log "Selected ${SELECTED_AIRGAP_REF} (channel=${AIRGAP_CHANNEL}, version=${version}, contract=${contract})"
+}
+
+prompt_custom_airgap_ref_interactive() {
+  local ref=""
+
+  read -r -p "Enter full OCI ref (e.g., repo:tag or repo@sha256:...): " ref
+  [[ -n "${ref}" && "${ref}" != *[[:space:]]* ]] || {
+    log "Ref must be a single-line OCI ref without whitespace."
+    return 1
+  }
+
+  SELECTED_AIRGAP_SELECTION_MODE="host-selected"
+  SELECTED_AIRGAP_SELECTION_SOURCE="operator-override"
+  SELECTED_AIRGAP_RELEASE_CHANNEL=""
+  SELECTED_AIRGAP_REF="${ref}"
+}
+
+override_airgap_repo_interactive() {
+  local next_repo=""
+  local next_catalog="catalog-${EXPECTED_AIRGAP_ARCH}"
+  local user_catalog=""
+
+  read -r -p "Enter OCI repo (e.g., ghcr.io/org/airgap-platform): " next_repo
+  [[ -n "${next_repo}" ]] || {
+    log "Repository cannot be empty."
+    return 1
+  }
+
+  AIRGAP_REPO="${next_repo}"
+  read -r -p "Catalog tag [${next_catalog}]: " user_catalog
+  if [[ -n "${user_catalog}" ]]; then
+    AIRGAP_CATALOG_TAG="${user_catalog}"
+  else
+    AIRGAP_CATALOG_TAG="${next_catalog}"
+  fi
+
+  if [[ -z "${AIRGAP_CHANNEL}" ]]; then
+    AIRGAP_CHANNEL="stable"
+  fi
+
+  log "Airgap repo override set to ${AIRGAP_REPO}"
+}
+
+interactive_select_airgap_ref() {
+  local required_contract_digest="$1"
+  local choice=""
+  local default_ref=""
+  local default_source=""
+  local default_channel=""
+  local default_mode=""
+
+  SELECTED_AIRGAP_REF=""
+  SELECTED_AIRGAP_SELECTION_MODE=""
+  SELECTED_AIRGAP_SELECTION_SOURCE=""
+  SELECTED_AIRGAP_RELEASE_CHANNEL=""
+
+  while [[ -z "${SELECTED_AIRGAP_REF}" ]]; do
+    resolve_default_airgap_ref "${required_contract_digest}"
+    default_ref="${SELECTED_AIRGAP_REF}"
+    default_mode="${SELECTED_AIRGAP_SELECTION_MODE}"
+    default_source="${SELECTED_AIRGAP_SELECTION_SOURCE}"
+    default_channel="${SELECTED_AIRGAP_RELEASE_CHANNEL}"
+    SELECTED_AIRGAP_REF=""
+
+    show_airgap_default_choice "${default_ref}"
+    read -r -p "Choice: " choice
+
+    case "${choice}" in
+      "")
+        SELECTED_AIRGAP_REF="${default_ref}"
+        SELECTED_AIRGAP_SELECTION_MODE="${default_mode}"
+        SELECTED_AIRGAP_SELECTION_SOURCE="${default_source}"
+        SELECTED_AIRGAP_RELEASE_CHANNEL="${default_channel}"
+        ;;
+      c)
+        choose_airgap_channel_interactive "${required_contract_digest}" || true
+        ;;
+      l)
+        select_airgap_ref_from_catalog_interactive "${required_contract_digest}" || true
+        ;;
+      r)
+        prompt_custom_airgap_ref_interactive || true
+        ;;
+      o)
+        override_airgap_repo_interactive || true
+        ;;
+      q|Q)
+        die "Mission compose aborted by user"
+        ;;
+      *)
+        log "Unknown option."
+        ;;
+    esac
+  done
+}
+
+determine_airgap_ref() {
+  local required_contract_digest="$1"
+
+  if [[ -n "${AIRGAP_REF}" ]]; then
+    SELECTED_AIRGAP_SELECTION_MODE="explicit-ref"
+    SELECTED_AIRGAP_SELECTION_SOURCE="airgap-ref"
+    SELECTED_AIRGAP_RELEASE_CHANNEL=""
+    SELECTED_AIRGAP_REF="${AIRGAP_REF}"
+    return 0
+  fi
+
+  if interactive_selection_enabled; then
+    interactive_select_airgap_ref "${required_contract_digest}"
+    return 0
+  fi
+
+  resolve_default_airgap_ref "${required_contract_digest}"
 }
 
 initial_cache_refs=()
-if [[ -n "${OS_REF}" ]]; then
-  initial_cache_refs+=("${OS_REF}")
-else
-  initial_cache_refs+=("${OS_REPO}:${OS_CATALOG_TAG}" "${OS_REPO}:${OS_CHANNEL_TAG}")
+if ! interactive_selection_enabled; then
+  if [[ -n "${OS_REF}" ]]; then
+    initial_cache_refs+=("${OS_REF}")
+  else
+    initial_cache_refs+=("${OS_REPO}:${OS_CATALOG_TAG}" "${OS_REPO}:$(os_channel_tag_for "${OS_CHANNEL}")")
+  fi
+  if [[ -n "${AIRGAP_REF}" ]]; then
+    initial_cache_refs+=("${AIRGAP_REF}")
+  elif [[ -n "${AIRGAP_CHANNEL}" ]]; then
+    initial_cache_refs+=("${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}" "${AIRGAP_REPO}:$(airgap_channel_tag_for "${AIRGAP_CHANNEL}")")
+  fi
+  maybe_confirm_cache_reuse "the requested selection inputs" "${initial_cache_refs[@]}"
 fi
-if [[ -n "${AIRGAP_REF}" ]]; then
-  initial_cache_refs+=("${AIRGAP_REF}")
-elif [[ -n "${AIRGAP_CHANNEL}" ]]; then
-  initial_cache_refs+=("${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}" "${AIRGAP_REPO}:${AIRGAP_CHANNEL_TAG}")
-fi
-maybe_confirm_cache_reuse "the requested selection inputs" "${initial_cache_refs[@]}"
 
 SELECTED_OS_REF=""
 determine_os_ref
@@ -901,6 +1471,8 @@ compose_cmd=(
 )
 if [[ -n "${FLASH_DEVICE}" ]]; then
   compose_cmd+=(--flash-device "${FLASH_DEVICE}")
+else
+  log "No flash device requested; composing mission media only"
 fi
 
 log "Invoking vendored Woodbox media adapter"
