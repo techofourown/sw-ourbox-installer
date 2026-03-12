@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "kind": "ourbox-media-adapter",
+  "target_id": "woodbox",
+  "phase": "phase-1",
+  "description": "Host-side adapter for composing Woodbox mission media from a selected OS payload.",
+  "supported_media_kinds": [
+    "installer-usb"
+  ],
+  "output_kind": "file",
+  "minimum_media_size_bytes": 8589934592,
+  "compose_entrypoint": "tools/media-adapter/compose-media.sh",
+  "validate_entrypoint": "tools/media-adapter/validate-media.sh",
+  "expected_os_artifact_type": "application/vnd.techofourown.ourbox.woodbox.os-payload.v1",
+  "expected_airgap_arch": "amd64",
+  "official": {
+    "os_repo": "ghcr.io/techofourown/ourbox-woodbox-os",
+    "os_catalog_tag": "x86-catalog",
+    "os_channel_tags": {
+      "stable": "x86-stable",
+      "beta": "x86-beta",
+      "nightly": "x86-nightly",
+      "exp-labs": "x86-exp-labs"
+    },
+    "airgap_repo": "ghcr.io/techofourown/sw-ourbox-os/airgap-platform",
+    "airgap_catalog_tag": "catalog-amd64",
+    "airgap_channel_tags": {
+      "stable": "stable-amd64",
+      "beta": "beta-amd64",
+      "nightly": "nightly-amd64",
+      "exp-labs": "exp-labs-amd64"
+    },
+    "installer_repo": "ghcr.io/techofourown/ourbox-woodbox-installer",
+    "installer_channel_tags": {
+      "stable": "x86-installer-stable",
+      "beta": "x86-installer-beta",
+      "nightly": "x86-installer-nightly",
+      "exp-labs": "x86-installer-exp-labs"
+    }
+  },
+  "runtime_prompts_kept": [
+    "os-disk-selection",
+    "data-disk-selection",
+    "data-disk-format-confirmation",
+    "identity",
+    "install-confirmation"
+  ],
+  "host_prerequisites": [
+    "bash",
+    "python3",
+    "curl",
+    "xorriso",
+    "7z",
+    "rsync",
+    "sha256sum",
+    "envsubst"
+  ],
+  "notes": [
+    "Phase-one compose uses the checked-out img-ourbox-woodbox repo as the substrate build source while the unified host repo owns selection and mission assembly.",
+    "Host-composed Woodbox mission media embeds the selected OS payload plus the selected airgap bundle and mission manifest.",
+    "The Woodbox preinstall runtime consumes the embedded mission as the authoritative local source for OS provenance and selected airgap installation input."
+  ]
+}
