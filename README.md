@@ -48,6 +48,8 @@ When run from a terminal, the host composer now mirrors the old installer UX:
 - `r` enters a custom OCI ref
 - `o` overrides the upstream repo/catalog
 - after OS selection, it prompts for the airgap bundle with the same flow
+- then it lists removable USB target media, makes you choose by number, and
+  requires `SELECT` before the compose/flash step continues
 
 Passing `--os-channel` or `--airgap-channel` changes the default lane shown in
 those prompts. Passing `--os-ref` or `--airgap-ref` skips the corresponding
@@ -60,7 +62,7 @@ Useful flags:
 - `--airgap-channel CHANNEL` to change the default host-selected airgap lane offered in the prompt
 - `--airgap-ref REF` to choose an explicit airgap bundle ref instead of the interactive picker or baked default
 - `--mission-only` to stop after staging the mission directory and manifest
-- `--flash-device /dev/...` to pass the composed ISO to the Woodbox adapter for flashing
+- `--flash-device /dev/...` to bypass the interactive USB picker and flash that exact device
 - `--adapter-repo-root /path/to/img-ourbox-woodbox` when the target repo is not beside this repo, nested inside it, or at `/techofourown/img-ourbox-woodbox`
 
 Cache behavior:

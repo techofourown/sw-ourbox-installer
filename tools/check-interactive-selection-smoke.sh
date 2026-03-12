@@ -116,4 +116,34 @@ determine_airgap_ref "${CONTRACT_DIGEST}" <<< $'l\n1\n'
 [[ "${SELECTED_AIRGAP_SELECTION_SOURCE}" == "catalog" ]] || die "expected listed airgap selection source to be catalog"
 [[ "${SELECTED_AIRGAP_RELEASE_CHANNEL}" == "beta" ]] || die "expected listed airgap release channel to normalize to beta"
 
+root_backing_disk() {
+  printf '/dev/nvme0n1\n'
+}
+
+refresh_target_media_candidates() {
+  TARGET_MEDIA_CANDIDATES=(/dev/sdb /dev/sdc)
+}
+
+print_target_media_candidates() {
+  :
+}
+
+preferred_byid_for_disk() {
+  if [[ "${1:-}" == "/dev/sdb" ]]; then
+    printf '/dev/disk/by-id/usb-smoke-target\n'
+  fi
+}
+
+validate_target_flash_device_or_die() {
+  [[ "${1:-}" == "/dev/disk/by-id/usb-smoke-target" ]] || die "unexpected validated flash target: ${1:-missing}"
+}
+
+lsblk() {
+  return 0
+}
+
+FLASH_DEVICE=""
+select_target_flash_device_interactive <<< $'1\nSELECT\n'
+[[ "${FLASH_DEVICE}" == "/dev/disk/by-id/usb-smoke-target" ]] || die "expected interactive media selection to capture the confirmed by-id target"
+
 printf '[%s] interactive selection smoke passed\n' "$(date -Is)"

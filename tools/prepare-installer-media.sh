@@ -372,6 +372,198 @@ offer_cache_cleanup() {
   fi
 }
 
+root_backing_disk() {
+  local root_src=""
+  local root_real=""
+  local root_parent=""
+
+  need_cmd findmnt
+  need_cmd readlink
+  need_cmd lsblk
+
+  root_src="$(findmnt -nr -o SOURCE / 2>/dev/null || true)"
+  root_real="$(readlink -f "${root_src}" 2>/dev/null || echo "${root_src}")"
+  root_parent="$(lsblk -no PKNAME "${root_real}" 2>/dev/null || true)"
+  if [[ -n "${root_parent}" ]]; then
+    printf '/dev/%s\n' "${root_parent}"
+  else
+    printf '%s\n' "${root_real}"
+  fi
+}
+
+preferred_byid_for_disk() {
+  local disk="$1"
+  local best=""
+  local path=""
+  local target=""
+  local base=""
+
+  need_cmd readlink
+
+  for path in /dev/disk/by-id/*; do
+    [[ -L "${path}" ]] || continue
+    [[ "${path}" == *-part* ]] && continue
+    target="$(readlink -f "${path}" 2>/dev/null || true)"
+    [[ "${target}" == "${disk}" ]] || continue
+
+    base="$(basename "${path}")"
+    if [[ "${base}" == usb-* ]]; then
+      printf '%s\n' "${path}"
+      return 0
+    fi
+    [[ -z "${best}" ]] && best="${path}"
+  done
+
+  [[ -n "${best}" ]] && printf '%s\n' "${best}"
+}
+
+is_candidate_media_disk() {
+  local disk="$1"
+  local root_disk="$2"
+  local type=""
+  local tran=""
+  local rm=""
+
+  need_cmd lsblk
+
+  type="$(lsblk -dn -o TYPE "${disk}" 2>/dev/null | tr -d '[:space:]')"
+  [[ "${type}" == "disk" ]] || return 1
+  [[ "${disk}" != "${root_disk}" ]] || return 1
+
+  tran="$(lsblk -dn -o TRAN "${disk}" 2>/dev/null | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+  rm="$(lsblk -dn -o RM "${disk}" 2>/dev/null | tr -d '[:space:]')"
+  [[ "${tran}" == "usb" || "${rm}" == "1" ]] || return 1
+  return 0
+}
+
+declare -a TARGET_MEDIA_CANDIDATES=()
+
+refresh_target_media_candidates() {
+  local root_disk="$1"
+  local disk=""
+
+  TARGET_MEDIA_CANDIDATES=()
+  while read -r disk; do
+    [[ -n "${disk}" ]] || continue
+    if is_candidate_media_disk "${disk}" "${root_disk}"; then
+      TARGET_MEDIA_CANDIDATES+=("${disk}")
+    fi
+  done < <(lsblk -dn -o NAME,TYPE | awk '$2=="disk" {print "/dev/"$1}')
+}
+
+print_target_media_candidates() {
+  local idx=""
+  local disk=""
+  local size=""
+  local tran=""
+  local model=""
+  local serial=""
+  local byid=""
+
+  echo
+  echo "Detected removable/USB target candidates:"
+  echo
+  printf '  %-3s %-14s %-8s %-6s %-22s %-14s\n' "#" "Device" "Size" "Tran" "Model" "Serial"
+  for idx in "${!TARGET_MEDIA_CANDIDATES[@]}"; do
+    disk="${TARGET_MEDIA_CANDIDATES[$idx]}"
+    size="$(lsblk -dn -o SIZE "${disk}" 2>/dev/null | tr -d '[:space:]')"
+    tran="$(lsblk -dn -o TRAN "${disk}" 2>/dev/null | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+    model="$(lsblk -dn -o MODEL "${disk}" 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    serial="$(lsblk -dn -o SERIAL "${disk}" 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    [[ -n "${tran}" ]] || tran="-"
+    [[ -n "${model}" ]] || model="-"
+    [[ -n "${serial}" ]] || serial="-"
+    printf '  %-3s %-14s %-8s %-6s %-22.22s %-14.14s\n' "$((idx + 1))" "${disk}" "${size}" "${tran}" "${model}" "${serial}"
+
+    byid="$(preferred_byid_for_disk "${disk}" || true)"
+    if [[ -n "${byid}" ]]; then
+      echo "      by-id: ${byid}"
+    fi
+
+    echo "      partitions (name fstype label mountpoints):"
+    lsblk -nr -o NAME,FSTYPE,LABEL,MOUNTPOINTS "${disk}" 2>/dev/null | sed 's/^/        /'
+  done
+  echo
+}
+
+validate_target_flash_device_or_die() {
+  local target="$1"
+  local target_real=""
+  local target_type=""
+  local root_disk=""
+
+  need_cmd lsblk
+  need_cmd readlink
+
+  [[ -n "${target}" ]] || die "target device is empty"
+  [[ "${target}" != *"<"* && "${target}" != *">"* ]] || die "target contains angle brackets; use a real /dev path"
+  [[ -e "${target}" ]] || die "target device does not exist: ${target}"
+
+  target_real="$(readlink -f "${target}")"
+  target_type="$(lsblk -dn -o TYPE "${target_real}" 2>/dev/null | tr -d '[:space:]')"
+  [[ "${target_type}" == "disk" ]] || die "target is not a raw disk: ${target_real}"
+
+  root_disk="$(root_backing_disk)"
+  [[ "${target_real}" != "${root_disk}" ]] || die "refusing target that backs / (${root_disk})"
+}
+
+select_target_flash_device_interactive() {
+  local choice=""
+  local idx=""
+  local selected=""
+  local byid=""
+  local confirm=""
+  local root_disk=""
+
+  root_disk="$(root_backing_disk)"
+  while true; do
+    refresh_target_media_candidates "${root_disk}"
+    if (( ${#TARGET_MEDIA_CANDIDATES[@]} == 0 )); then
+      echo
+      echo "No removable/USB disk candidates found."
+      echo "Insert the target USB media, then rescan."
+      read -r -p "Press ENTER to rescan, or type q to quit: " choice
+      [[ "${choice}" == "q" || "${choice}" == "Q" ]] && die "no target media selected"
+      continue
+    fi
+
+    print_target_media_candidates
+    read -r -p "Select target number (r=rescan, q=quit): " choice
+    case "${choice}" in
+      r|R) continue ;;
+      q|Q) die "operator canceled target media selection" ;;
+    esac
+
+    [[ "${choice}" =~ ^[0-9]+$ ]] || {
+      log "Invalid selection: ${choice}"
+      continue
+    }
+    idx="$((choice - 1))"
+    if (( idx < 0 || idx >= ${#TARGET_MEDIA_CANDIDATES[@]} )); then
+      log "Selection out of range: ${choice}"
+      continue
+    fi
+
+    selected="${TARGET_MEDIA_CANDIDATES[$idx]}"
+    byid="$(preferred_byid_for_disk "${selected}" || true)"
+    if [[ -n "${byid}" ]]; then
+      selected="${byid}"
+    fi
+
+    validate_target_flash_device_or_die "${selected}"
+    echo
+    lsblk -o NAME,SIZE,MODEL,SERIAL,TYPE,FSTYPE,LABEL,MOUNTPOINTS "${selected}" || true
+    echo
+    read -r -p "Type SELECT to use ${selected}: " confirm
+    [[ "${confirm}" == "SELECT" ]] || {
+      log "Selection not confirmed; returning to list"
+      continue
+    }
+    FLASH_DEVICE="${selected}"
+    return 0
+  done
+}
+
 find_pulled_file() {
   local root="$1"
   local name="$2"
@@ -1462,6 +1654,20 @@ if [[ "${MISSION_ONLY}" == "1" ]]; then
   exit 0
 fi
 
+if [[ -z "${FLASH_DEVICE}" ]]; then
+  if interactive_selection_enabled; then
+    log "Entering interactive target media selection."
+    select_target_flash_device_interactive
+    validate_target_flash_device_or_die "${FLASH_DEVICE}"
+    log "Using target media device: ${FLASH_DEVICE}"
+  else
+    log "No flash device selected in non-interactive mode; composing mission media only"
+  fi
+else
+  validate_target_flash_device_or_die "${FLASH_DEVICE}"
+  log "Using target media device: ${FLASH_DEVICE}"
+fi
+
 compose_cmd=(
   "${VENDORED_ADAPTER_ROOT}/compose-media.sh"
   --mission-dir "${MISSION_DIR}"
@@ -1471,8 +1677,6 @@ compose_cmd=(
 )
 if [[ -n "${FLASH_DEVICE}" ]]; then
   compose_cmd+=(--flash-device "${FLASH_DEVICE}")
-else
-  log "No flash device requested; composing mission media only"
 fi
 
 log "Invoking vendored Woodbox media adapter"
