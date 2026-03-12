@@ -1267,19 +1267,20 @@ determine_airgap_ref() {
 }
 
 initial_cache_refs=()
-if ! interactive_selection_enabled; then
-  if [[ -n "${OS_REF}" ]]; then
-    initial_cache_refs+=("${OS_REF}")
-  else
-    initial_cache_refs+=("${OS_REPO}:${OS_CATALOG_TAG}" "${OS_REPO}:$(os_channel_tag_for "${OS_CHANNEL}")")
-  fi
-  if [[ -n "${AIRGAP_REF}" ]]; then
-    initial_cache_refs+=("${AIRGAP_REF}")
-  elif [[ -n "${AIRGAP_CHANNEL}" ]]; then
-    initial_cache_refs+=("${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}" "${AIRGAP_REPO}:$(airgap_channel_tag_for "${AIRGAP_CHANNEL}")")
-  fi
-  maybe_confirm_cache_reuse "the requested selection inputs" "${initial_cache_refs[@]}"
+if [[ -n "${OS_REF}" ]]; then
+  initial_cache_refs+=("${OS_REF}")
+else
+  initial_cache_refs+=("${OS_REPO}:${OS_CATALOG_TAG}" "${OS_REPO}:$(os_channel_tag_for "${OS_CHANNEL}")")
 fi
+if [[ -n "${AIRGAP_REF}" ]]; then
+  initial_cache_refs+=("${AIRGAP_REF}")
+else
+  initial_cache_refs+=("${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}")
+  if [[ -n "${AIRGAP_CHANNEL}" ]]; then
+    initial_cache_refs+=("${AIRGAP_REPO}:$(airgap_channel_tag_for "${AIRGAP_CHANNEL}")")
+  fi
+fi
+maybe_confirm_cache_reuse "the requested selection inputs" "${initial_cache_refs[@]}"
 
 SELECTED_OS_REF=""
 determine_os_ref
