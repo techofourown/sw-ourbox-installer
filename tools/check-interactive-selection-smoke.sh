@@ -7,6 +7,15 @@ source "${ROOT}/tools/lib.sh"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "${TMP_ROOT}"' EXIT
+HARNESS_ROOT="${ROOT}"
+HARNESS_TMP_ROOT="${TMP_ROOT}"
+
+OURBOX_PREPARE_INSTALLER_LIBRARY_ONLY=1
+# shellcheck disable=SC1091
+source "${ROOT}/tools/prepare-installer-media.sh"
+unset OURBOX_PREPARE_INSTALLER_LIBRARY_ONLY
+ROOT="${HARNESS_ROOT}"
+TMP_ROOT="${HARNESS_TMP_ROOT}"
 
 # shellcheck disable=SC1091
 source <(
@@ -17,6 +26,14 @@ source <(
 interactive_selection_enabled() {
   return 0
 }
+
+interactive_target_selection_enabled() {
+  return 0
+}
+
+TARGET=""
+determine_target <<< $'\n'
+[[ "${TARGET}" == "woodbox" ]] || die "expected ENTER to accept the default target selection"
 
 OS_REPO="ghcr.io/example/ourbox-woodbox-os"
 OS_CATALOG_TAG="x86-catalog"
