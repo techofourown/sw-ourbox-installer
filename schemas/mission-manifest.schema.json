@@ -1,0 +1,353 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/techofourown/sw-ourbox-installer/schemas/mission-manifest.schema.json",
+  "title": "OurBox Mission Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "kind",
+    "compose_id",
+    "created",
+    "target",
+    "composer",
+    "adapter",
+    "operator_mode",
+    "mission_media",
+    "substrate",
+    "platform_contract",
+    "selected_os",
+    "selected_airgap",
+    "staged_files"
+  ],
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "kind": {
+      "const": "ourbox-mission"
+    },
+    "compose_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "media_kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "media_kind": {
+          "type": "string"
+        }
+      }
+    },
+    "composer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "phase",
+        "source_revision"
+      ],
+      "properties": {
+        "name": {
+          "const": "sw-ourbox-installer"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "source_revision": {
+          "type": "string"
+        }
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_repo",
+        "source_revision",
+        "adapter_json_relpath",
+        "runtime_prompts_kept"
+      ],
+      "properties": {
+        "source_repo": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "adapter_json_relpath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtime_prompts_kept": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "operator_mode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "prompt_hostname_on_target",
+        "prompt_identity_on_target"
+      ],
+      "properties": {
+        "mode": {
+          "const": "install"
+        },
+        "prompt_hostname_on_target": {
+          "type": "boolean"
+        },
+        "prompt_identity_on_target": {
+          "type": "boolean"
+        }
+      }
+    },
+    "mission_media": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "compose_strategy",
+        "mission_only"
+      ],
+      "properties": {
+        "compose_strategy": {
+          "type": "string"
+        },
+        "mission_only": {
+          "type": "boolean"
+        }
+      }
+    },
+    "substrate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategy",
+        "repo_path",
+        "repo_revision",
+        "compose_entrypoint"
+      ],
+      "properties": {
+        "strategy": {
+          "type": "string"
+        },
+        "repo_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo_revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compose_entrypoint": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "platform_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "digest"
+      ],
+      "properties": {
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "source": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "created": {
+          "type": "string"
+        }
+      }
+    },
+    "selected_os": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selection_source",
+        "artifact_ref",
+        "artifact_digest",
+        "artifact_type",
+        "platform_contract_digest",
+        "payload",
+        "metadata_relpath"
+      ],
+      "properties": {
+        "selection_source": {
+          "type": "string"
+        },
+        "release_channel": {
+          "type": "string"
+        },
+        "artifact_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "artifact_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform_contract_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "relpath",
+            "sha256",
+            "size_bytes"
+          ],
+          "properties": {
+            "relpath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "size_bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "metadata_relpath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "selected_airgap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selection_mode",
+        "selection_source",
+        "artifact_ref",
+        "artifact_digest",
+        "platform_contract_digest",
+        "arch",
+        "payload_relpath",
+        "manifest_relpath",
+        "present_in_selected_os_payload"
+      ],
+      "properties": {
+        "selection_mode": {
+          "type": "string"
+        },
+        "selection_source": {
+          "type": "string"
+        },
+        "release_channel": {
+          "type": "string"
+        },
+        "artifact_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "platform_contract_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "arch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "profile": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "created": {
+          "type": "string"
+        },
+        "k3s_version": {
+          "type": "string"
+        },
+        "payload_relpath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifest_relpath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "images_lock_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "present_in_selected_os_payload": {
+          "type": "boolean"
+        }
+      }
+    },
+    "staged_files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "relpath",
+          "sha256",
+          "size_bytes"
+        ],
+        "properties": {
+          "relpath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}
