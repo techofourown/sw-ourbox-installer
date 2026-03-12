@@ -16,9 +16,8 @@ esac
 [[ -d "${SOURCE_REPO}" ]] || die "source repo not found: ${SOURCE_REPO}"
 
 SOURCE_REVISION="$(git -C "${SOURCE_REPO}" rev-parse HEAD 2>/dev/null || echo unknown)"
-if [[ -n "$(git -C "${SOURCE_REPO}" status --short 2>/dev/null || true)" ]]; then
-  SOURCE_REVISION="${SOURCE_REVISION}-dirty"
-fi
+[[ -z "$(git -C "${SOURCE_REPO}" status --short 2>/dev/null || true)" ]] \
+  || die "source repo must be clean before vendoring: ${SOURCE_REPO}"
 SOURCE_REMOTE="$(git -C "${SOURCE_REPO}" remote get-url github 2>/dev/null || printf '%s\n' "${SOURCE_REPO}")"
 DEST_DIR="${ROOT}/vendor/${TARGET}"
 
@@ -26,6 +25,7 @@ mkdir -p "${DEST_DIR}"
 cp -f "${SOURCE_REPO}/tools/media-adapter/adapter.json" "${DEST_DIR}/adapter.json"
 cp -f "${SOURCE_REPO}/tools/media-adapter/compose-media.sh" "${DEST_DIR}/compose-media.sh"
 cp -f "${SOURCE_REPO}/tools/media-adapter/validate-media.sh" "${DEST_DIR}/validate-media.sh"
+cp -f "${SOURCE_REPO}/tools/strict-kv-metadata.py" "${DEST_DIR}/strict-kv-metadata.py"
 
 cat > "${ROOT}/vendor/${TARGET}.upstream.env" <<EOF
 TARGET_ID=${TARGET}

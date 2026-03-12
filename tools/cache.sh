@@ -93,8 +93,9 @@ resolve_ref_with_cache_policy() {
   fi
 
   if [[ "${reuse_cache}" == "1" ]]; then
-    cache_lookup_ref_alias "${ref}" || return 1
-    return 0
+    if cache_lookup_ref_alias "${ref}"; then
+      return 0
+    fi
   fi
 
   need_cmd oras

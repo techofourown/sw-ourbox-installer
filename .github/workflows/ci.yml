@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Shell syntax
+        run: |
+          bash -n tools/prepare-installer-media.sh
+          bash -n tools/cache.sh
+          bash -n tools/vendor-adapter.sh
+          bash -n tools/check-cache-policy-smoke.sh
+          bash -n tools/check-vendored-woodbox-pin.sh
+          bash -n tools/check-woodbox-contract-smoke.sh
+          bash -n vendor/woodbox/compose-media.sh
+          bash -n vendor/woodbox/validate-media.sh
+
+      - name: Python and JSON validation
+        run: |
+          python3 -m py_compile tools/validate-mission-manifest.py
+          python3 -m py_compile vendor/woodbox/strict-kv-metadata.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          for path in (
+              Path("schemas/mission-manifest.schema.json"),
+              Path("vendor/woodbox/adapter.json"),
+          ):
+              with path.open("r", encoding="utf-8") as handle:
+                  json.load(handle)
+          PY
+
+      - name: Vendored pin check
+        run: bash tools/check-vendored-woodbox-pin.sh
+
+      - name: Cache policy smoke
+        run: bash tools/check-cache-policy-smoke.sh
+
+      - name: Woodbox contract smoke
+        run: bash tools/check-woodbox-contract-smoke.sh
