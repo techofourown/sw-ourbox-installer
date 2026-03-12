@@ -17,6 +17,9 @@ MISSION_ONLY=0
 FLASH_DEVICE=""
 ADAPTER_REPO_ROOT="${WOODBOX_REPO_ROOT:-/techofourown/img-ourbox-woodbox}"
 VENDORED_ADAPTER_ROOT="${ROOT}/vendor/woodbox"
+VENDORED_METADATA_PARSER="${VENDORED_ADAPTER_ROOT}/strict-kv-metadata.py"
+MISSION_SCHEMA="${ROOT}/schemas/mission-manifest.schema.json"
+MISSION_SCHEMA_VALIDATOR="${ROOT}/tools/validate-mission-manifest.py"
 TMP_ROOT=""
 CACHE_REUSE_ENABLED=0
 CACHE_REUSE_DECISION_MADE=0
@@ -114,6 +117,9 @@ need_cmd find
 [[ -f "${VENDORED_ADAPTER_ROOT}/adapter.json" ]] || die "vendored Woodbox adapter not found: ${VENDORED_ADAPTER_ROOT}/adapter.json"
 [[ -f "${VENDORED_ADAPTER_ROOT}/compose-media.sh" ]] || die "vendored Woodbox compose script not found: ${VENDORED_ADAPTER_ROOT}/compose-media.sh"
 [[ -f "${VENDORED_ADAPTER_ROOT}/validate-media.sh" ]] || die "vendored Woodbox validate script not found: ${VENDORED_ADAPTER_ROOT}/validate-media.sh"
+[[ -f "${VENDORED_METADATA_PARSER}" ]] || die "vendored Woodbox metadata parser not found: ${VENDORED_METADATA_PARSER}"
+[[ -f "${MISSION_SCHEMA}" ]] || die "mission schema not found: ${MISSION_SCHEMA}"
+[[ -f "${MISSION_SCHEMA_VALIDATOR}" ]] || die "mission schema validator not found: ${MISSION_SCHEMA_VALIDATOR}"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "${TMP_ROOT}"' EXIT
@@ -480,37 +486,71 @@ ACTUAL_OS_SHA="$(sha256_file "${OS_PAYLOAD}")"
 [[ "${ACTUAL_OS_SHA}" == "${EXPECTED_OS_SHA}" ]] || die "os payload SHA mismatch for ${SELECTED_OS_PINNED_REF}"
 
 os_meta_dump="$(
-  (
-    unset OS_ARTIFACT_TYPE OURBOX_PLATFORM_CONTRACT_DIGEST OURBOX_PLATFORM_CONTRACT_SOURCE
-    unset OURBOX_PLATFORM_CONTRACT_REVISION OURBOX_PLATFORM_CONTRACT_VERSION OURBOX_PLATFORM_CONTRACT_CREATED
-    unset OURBOX_AIRGAP_PLATFORM_REF OURBOX_AIRGAP_PLATFORM_DIGEST OURBOX_AIRGAP_PLATFORM_SOURCE
-    unset OURBOX_AIRGAP_PLATFORM_REVISION OURBOX_AIRGAP_PLATFORM_VERSION OURBOX_AIRGAP_PLATFORM_CREATED
-    unset OURBOX_AIRGAP_PLATFORM_ARCH OURBOX_AIRGAP_PLATFORM_PROFILE OURBOX_AIRGAP_PLATFORM_K3S_VERSION
-    unset OURBOX_AIRGAP_PLATFORM_IMAGES_LOCK_SHA256 OURBOX_VERSION OURBOX_VARIANT OURBOX_TARGET OURBOX_SKU
-    # shellcheck disable=SC1090
-    source "${OS_META_ENV}"
-    printf '%s\n' \
-      "${OS_ARTIFACT_TYPE-}" \
-      "${OURBOX_PLATFORM_CONTRACT_DIGEST-}" \
-      "${OURBOX_PLATFORM_CONTRACT_SOURCE-}" \
-      "${OURBOX_PLATFORM_CONTRACT_REVISION-}" \
-      "${OURBOX_PLATFORM_CONTRACT_VERSION-}" \
-      "${OURBOX_PLATFORM_CONTRACT_CREATED-}" \
-      "${OURBOX_AIRGAP_PLATFORM_REF-}" \
-      "${OURBOX_AIRGAP_PLATFORM_DIGEST-}" \
-      "${OURBOX_AIRGAP_PLATFORM_SOURCE-}" \
-      "${OURBOX_AIRGAP_PLATFORM_REVISION-}" \
-      "${OURBOX_AIRGAP_PLATFORM_VERSION-}" \
-      "${OURBOX_AIRGAP_PLATFORM_CREATED-}" \
-      "${OURBOX_AIRGAP_PLATFORM_ARCH-}" \
-      "${OURBOX_AIRGAP_PLATFORM_PROFILE-}" \
-      "${OURBOX_AIRGAP_PLATFORM_K3S_VERSION-}" \
-      "${OURBOX_AIRGAP_PLATFORM_IMAGES_LOCK_SHA256-}" \
-      "${OURBOX_VERSION-}" \
-      "${OURBOX_VARIANT-}" \
-      "${OURBOX_TARGET-}" \
-      "${OURBOX_SKU-}"
-  )
+  python3 "${VENDORED_METADATA_PARSER}" "${OS_META_ENV}" \
+    --allow OS_PAYLOAD_BASENAME \
+    --allow OS_PAYLOAD_SHA256 \
+    --allow OS_PAYLOAD_SIZE_BYTES \
+    --allow OS_ARTIFACT_TYPE \
+    --allow OURBOX_PRODUCT \
+    --allow OURBOX_DEVICE \
+    --allow OURBOX_TARGET \
+    --allow OURBOX_SKU \
+    --allow OURBOX_VARIANT \
+    --allow OURBOX_VERSION \
+    --allow OURBOX_RECIPE_GIT_HASH \
+    --allow BUILD_TS \
+    --allow GIT_SHA \
+    --allow OURBOX_PLATFORM_CONTRACT_SOURCE \
+    --allow OURBOX_PLATFORM_CONTRACT_REVISION \
+    --allow OURBOX_PLATFORM_CONTRACT_VERSION \
+    --allow OURBOX_PLATFORM_CONTRACT_DIGEST \
+    --allow OURBOX_AIRGAP_PLATFORM_REF \
+    --allow OURBOX_AIRGAP_PLATFORM_DIGEST \
+    --allow OURBOX_AIRGAP_PLATFORM_SOURCE \
+    --allow OURBOX_AIRGAP_PLATFORM_REVISION \
+    --allow OURBOX_AIRGAP_PLATFORM_VERSION \
+    --allow OURBOX_AIRGAP_PLATFORM_CREATED \
+    --allow OURBOX_AIRGAP_PLATFORM_ARCH \
+    --allow OURBOX_AIRGAP_PLATFORM_PROFILE \
+    --allow OURBOX_AIRGAP_PLATFORM_K3S_VERSION \
+    --allow OURBOX_AIRGAP_PLATFORM_IMAGES_LOCK_SHA256 \
+    --allow OURBOX_BASE_ISO_URL \
+    --allow OURBOX_BASE_ISO_SHA256 \
+    --allow K3S_VERSION \
+    --allow GITHUB_RUN_ID \
+    --allow GITHUB_RUN_ATTEMPT \
+    --require OS_ARTIFACT_TYPE \
+    --require OURBOX_PLATFORM_CONTRACT_DIGEST \
+    --require OURBOX_AIRGAP_PLATFORM_REF \
+    --require OURBOX_AIRGAP_PLATFORM_DIGEST \
+    --require OURBOX_AIRGAP_PLATFORM_SOURCE \
+    --require OURBOX_AIRGAP_PLATFORM_REVISION \
+    --require OURBOX_AIRGAP_PLATFORM_VERSION \
+    --require OURBOX_AIRGAP_PLATFORM_CREATED \
+    --require OURBOX_AIRGAP_PLATFORM_ARCH \
+    --require OURBOX_AIRGAP_PLATFORM_PROFILE \
+    --require OURBOX_AIRGAP_PLATFORM_K3S_VERSION \
+    --require OURBOX_AIRGAP_PLATFORM_IMAGES_LOCK_SHA256 \
+    --print OS_ARTIFACT_TYPE \
+    --print OURBOX_PLATFORM_CONTRACT_DIGEST \
+    --print OURBOX_PLATFORM_CONTRACT_SOURCE \
+    --print OURBOX_PLATFORM_CONTRACT_REVISION \
+    --print OURBOX_PLATFORM_CONTRACT_VERSION \
+    --print OURBOX_PLATFORM_CONTRACT_CREATED \
+    --print OURBOX_AIRGAP_PLATFORM_REF \
+    --print OURBOX_AIRGAP_PLATFORM_DIGEST \
+    --print OURBOX_AIRGAP_PLATFORM_SOURCE \
+    --print OURBOX_AIRGAP_PLATFORM_REVISION \
+    --print OURBOX_AIRGAP_PLATFORM_VERSION \
+    --print OURBOX_AIRGAP_PLATFORM_CREATED \
+    --print OURBOX_AIRGAP_PLATFORM_ARCH \
+    --print OURBOX_AIRGAP_PLATFORM_PROFILE \
+    --print OURBOX_AIRGAP_PLATFORM_K3S_VERSION \
+    --print OURBOX_AIRGAP_PLATFORM_IMAGES_LOCK_SHA256 \
+    --print OURBOX_VERSION \
+    --print OURBOX_VARIANT \
+    --print OURBOX_TARGET \
+    --print OURBOX_SKU
 )"
 mapfile -t os_meta_fields <<<"${os_meta_dump}"
 [[ "${#os_meta_fields[@]}" -eq 20 ]] || die "failed to parse ${OS_META_ENV}"
@@ -567,26 +607,41 @@ find "${AIRGAP_EXTRACT_DIR}/platform/images" -maxdepth 1 -type f -name '*.tar' -
   || die "airgap bundle missing platform image tar payloads"
 
 airgap_manifest_dump="$(
-  (
-    unset OURBOX_AIRGAP_PLATFORM_SOURCE OURBOX_AIRGAP_PLATFORM_REVISION OURBOX_AIRGAP_PLATFORM_VERSION
-    unset OURBOX_AIRGAP_PLATFORM_CREATED OURBOX_PLATFORM_CONTRACT_REF OURBOX_PLATFORM_CONTRACT_DIGEST
-    unset AIRGAP_PLATFORM_ARCH K3S_VERSION OURBOX_PLATFORM_PROFILE OURBOX_PLATFORM_IMAGES_LOCK_PATH
-    unset OURBOX_PLATFORM_IMAGES_LOCK_SHA256
-    # shellcheck disable=SC1090
-    source "${AIRGAP_MANIFEST}"
-    printf '%s\n' \
-      "${OURBOX_AIRGAP_PLATFORM_SOURCE-}" \
-      "${OURBOX_AIRGAP_PLATFORM_REVISION-}" \
-      "${OURBOX_AIRGAP_PLATFORM_VERSION-}" \
-      "${OURBOX_AIRGAP_PLATFORM_CREATED-}" \
-      "${OURBOX_PLATFORM_CONTRACT_REF-}" \
-      "${OURBOX_PLATFORM_CONTRACT_DIGEST-}" \
-      "${AIRGAP_PLATFORM_ARCH-}" \
-      "${K3S_VERSION-}" \
-      "${OURBOX_PLATFORM_PROFILE-}" \
-      "${OURBOX_PLATFORM_IMAGES_LOCK_PATH-}" \
-      "${OURBOX_PLATFORM_IMAGES_LOCK_SHA256-}"
-  )
+  python3 "${VENDORED_METADATA_PARSER}" "${AIRGAP_MANIFEST}" \
+    --allow OURBOX_AIRGAP_PLATFORM_SCHEMA \
+    --allow OURBOX_AIRGAP_PLATFORM_KIND \
+    --allow OURBOX_AIRGAP_PLATFORM_SOURCE \
+    --allow OURBOX_AIRGAP_PLATFORM_REVISION \
+    --allow OURBOX_AIRGAP_PLATFORM_VERSION \
+    --allow OURBOX_AIRGAP_PLATFORM_CREATED \
+    --allow OURBOX_PLATFORM_CONTRACT_REF \
+    --allow OURBOX_PLATFORM_CONTRACT_DIGEST \
+    --allow AIRGAP_PLATFORM_ARCH \
+    --allow K3S_VERSION \
+    --allow OURBOX_PLATFORM_PROFILE \
+    --allow OURBOX_PLATFORM_IMAGES_LOCK_PATH \
+    --allow OURBOX_PLATFORM_IMAGES_LOCK_SHA256 \
+    --require OURBOX_AIRGAP_PLATFORM_SOURCE \
+    --require OURBOX_AIRGAP_PLATFORM_REVISION \
+    --require OURBOX_AIRGAP_PLATFORM_VERSION \
+    --require OURBOX_AIRGAP_PLATFORM_CREATED \
+    --require OURBOX_PLATFORM_CONTRACT_DIGEST \
+    --require AIRGAP_PLATFORM_ARCH \
+    --require K3S_VERSION \
+    --require OURBOX_PLATFORM_PROFILE \
+    --require OURBOX_PLATFORM_IMAGES_LOCK_PATH \
+    --require OURBOX_PLATFORM_IMAGES_LOCK_SHA256 \
+    --print OURBOX_AIRGAP_PLATFORM_SOURCE \
+    --print OURBOX_AIRGAP_PLATFORM_REVISION \
+    --print OURBOX_AIRGAP_PLATFORM_VERSION \
+    --print OURBOX_AIRGAP_PLATFORM_CREATED \
+    --print OURBOX_PLATFORM_CONTRACT_REF \
+    --print OURBOX_PLATFORM_CONTRACT_DIGEST \
+    --print AIRGAP_PLATFORM_ARCH \
+    --print K3S_VERSION \
+    --print OURBOX_PLATFORM_PROFILE \
+    --print OURBOX_PLATFORM_IMAGES_LOCK_PATH \
+    --print OURBOX_PLATFORM_IMAGES_LOCK_SHA256
 )"
 mapfile -t airgap_manifest_fields <<<"${airgap_manifest_dump}"
 [[ "${#airgap_manifest_fields[@]}" -eq 11 ]] || die "failed to parse ${AIRGAP_MANIFEST}"
@@ -622,7 +677,8 @@ fi
 COMPOSED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 COMPOSE_ID="${TARGET}-${OURBOX_VERSION}-${COMPOSED_AT//[:]/}"
 
-MISSION_DIR="${OUTPUT_DIR}/mission"
+STAGING_OUTPUT_DIR="${TMP_ROOT}/prepared-output"
+MISSION_DIR="${STAGING_OUTPUT_DIR}/mission"
 OS_STAGE_DIR="${MISSION_DIR}/artifacts/os"
 AIRGAP_STAGE_DIR="${MISSION_DIR}/artifacts/airgap"
 mkdir -p "${OS_STAGE_DIR}" "${AIRGAP_STAGE_DIR}"
@@ -761,7 +817,18 @@ with (mission_dir / "mission-manifest.json").open("w", encoding="utf-8") as hand
     handle.write("\n")
 PY
 
-log "Mission directory prepared: ${MISSION_DIR}"
+python3 "${MISSION_SCHEMA_VALIDATOR}" "${MISSION_SCHEMA}" "${MISSION_DIR}/mission-manifest.json"
+bash "${VENDORED_ADAPTER_ROOT}/validate-media.sh" \
+  --mission-dir "${MISSION_DIR}" \
+  --os-payload "${OS_STAGE_DIR}/os-payload.tar.gz" \
+  --os-meta-env "${OS_STAGE_DIR}/os.meta.env"
+
+mkdir -p "${OUTPUT_DIR}"
+FINAL_MISSION_DIR="${OUTPUT_DIR}/mission"
+rm -rf "${FINAL_MISSION_DIR}"
+cp -a "${MISSION_DIR}" "${FINAL_MISSION_DIR}"
+
+log "Mission directory prepared: ${FINAL_MISSION_DIR}"
 log "Selected OS artifact: ${SELECTED_OS_PINNED_REF} (${SELECTED_OS_SELECTION_SOURCE})"
 log "Selected airgap bundle: ${SELECTED_AIRGAP_PINNED_REF} (${SELECTED_AIRGAP_SELECTION_SOURCE})"
 
@@ -775,7 +842,8 @@ compose_cmd=(
   "${VENDORED_ADAPTER_ROOT}/compose-media.sh"
   --mission-dir "${MISSION_DIR}"
   --os-payload "${OS_STAGE_DIR}/os-payload.tar.gz"
-  --output-dir "${OUTPUT_DIR}/media"
+  --os-meta-env "${OS_STAGE_DIR}/os.meta.env"
+  --output-dir "${STAGING_OUTPUT_DIR}/media"
 )
 if [[ -n "${FLASH_DEVICE}" ]]; then
   compose_cmd+=(--flash-device "${FLASH_DEVICE}")
@@ -785,5 +853,10 @@ log "Invoking vendored Woodbox media adapter"
 WOODBOX_ADAPTER_ROOT="${VENDORED_ADAPTER_ROOT}" \
 WOODBOX_REPO_ROOT="${ADAPTER_REPO_ROOT}" \
   "${compose_cmd[@]}"
+
+FINAL_MEDIA_DIR="${OUTPUT_DIR}/media"
+rm -rf "${FINAL_MEDIA_DIR}"
+cp -a "${STAGING_OUTPUT_DIR}/media" "${FINAL_MEDIA_DIR}"
+log "Mission media output directory: ${FINAL_MEDIA_DIR}"
 
 offer_cache_cleanup
