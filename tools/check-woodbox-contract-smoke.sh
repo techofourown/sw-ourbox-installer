@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 source "${ROOT}/tools/lib.sh"
+need_cmd xorriso
+need_cmd 7z
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
@@ -11,10 +13,12 @@ trap 'rm -rf "${TMP}"' EXIT
 MISSION_DIR="${TMP}/mission"
 OS_DIR="${MISSION_DIR}/artifacts/os"
 AIRGAP_DIR="${MISSION_DIR}/artifacts/airgap"
-FAKE_WOODBOX="${TMP}/woodbox"
 AIRGAP_SOURCE_DIR="${TMP}/airgap-source"
-mkdir -p "${OS_DIR}" "${AIRGAP_DIR}" "${FAKE_WOODBOX}/tools" "${FAKE_WOODBOX}/deploy" \
-  "${AIRGAP_SOURCE_DIR}/k3s" "${AIRGAP_SOURCE_DIR}/platform/images"
+SUBSTRATE_TREE="${TMP}/substrate-tree"
+BOOT_DIR="${TMP}/boot-images"
+mkdir -p "${OS_DIR}" "${AIRGAP_DIR}" "${AIRGAP_SOURCE_DIR}/k3s" "${AIRGAP_SOURCE_DIR}/platform/images" \
+  "${SUBSTRATE_TREE}/boot/grub/i386-pc" "${SUBSTRATE_TREE}/nocloud" "${SUBSTRATE_TREE}/ourbox/installer" \
+  "${SUBSTRATE_TREE}/ourbox/tools" "${BOOT_DIR}"
 
 cp "${ROOT}/vendor/woodbox/strict-kv-metadata.py" "${TMP}/strict-kv-metadata.py"
 chmod +x "${TMP}/strict-kv-metadata.py"
@@ -111,9 +115,10 @@ cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
     "mission_only": false
   },
   "substrate": {
-    "strategy": "target-repo-build",
-    "repo_path": "/tmp/woodbox",
-    "repo_revision": "abc123def456",
+    "strategy": "published-installer-substrate",
+    "artifact_ref": "ghcr.io/example/ourbox-woodbox-installer@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "artifact_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "release_channel": "stable",
     "compose_entrypoint": "tools/media-adapter/compose-media.sh"
   },
   "platform_contract": {
@@ -174,54 +179,45 @@ bash "${ROOT}/vendor/woodbox/validate-media.sh" \
   --os-payload "${OS_DIR}/os-payload.tar.gz" \
   --os-meta-env "${OS_DIR}/os.meta.env"
 
-cat > "${FAKE_WOODBOX}/tools/lib.sh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-log() { printf '[%s] %s\n' "$(date -Is)" "$*" >&2; }
-die() { log "ERROR: $*"; exit 1; }
-EOF
+printf 'set timeout=1\nmenuentry \"fixture\" {\n linux /casper/vmlinuz autoinstall ds=nocloud\\;s=file:///cdrom/nocloud/ ---\n}\n' \
+  > "${SUBSTRATE_TREE}/boot/grub/grub.cfg"
+dd if=/dev/zero of="${SUBSTRATE_TREE}/boot/grub/i386-pc/eltorito.img" bs=1M count=1 status=none
+dd if=/dev/zero of="${BOOT_DIR}/1-Boot-NoEmul.img" bs=1M count=1 status=none
+dd if=/dev/zero of="${BOOT_DIR}/2-Boot-NoEmul.img" bs=1M count=1 status=none
+printf 'fixture user-data\n' > "${SUBSTRATE_TREE}/nocloud/user-data"
+printf 'fixture meta-data\n' > "${SUBSTRATE_TREE}/nocloud/meta-data"
+printf 'fixture autoinstall\n' > "${SUBSTRATE_TREE}/autoinstall.yaml"
+printf 'INSTALLER_ID=woodbox\n' > "${SUBSTRATE_TREE}/ourbox/installer/defaults.env"
+printf '#!/bin/sh\nexit 0\n' > "${SUBSTRATE_TREE}/ourbox/tools/ourbox-preinstall"
+chmod +x "${SUBSTRATE_TREE}/ourbox/tools/ourbox-preinstall"
 
-cat > "${FAKE_WOODBOX}/tools/build-installer-iso.sh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-payload=""
-payload_meta=""
-mission_dir=""
-out_iso=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --embed-payload) payload="$2"; shift 2 ;;
-    --embed-payload-meta) payload_meta="$2"; shift 2 ;;
-    --embed-mission-dir) mission_dir="$2"; shift 2 ;;
-    --out-iso) out_iso="$2"; shift 2 ;;
-    *) echo "unexpected arg: $1" >&2; exit 1 ;;
-  esac
-done
-[[ -f "${payload}" ]] || { echo "payload missing" >&2; exit 1; }
-[[ -f "${payload_meta}" ]] || { echo "payload meta missing" >&2; exit 1; }
-[[ -f "${mission_dir}/mission-manifest.json" ]] || { echo "mission manifest missing" >&2; exit 1; }
-[[ "${payload_meta}" == */os.meta.env ]] || { echo "explicit payload meta handoff missing" >&2; exit 1; }
-[[ -n "${out_iso}" ]] || { echo "missing explicit out-iso" >&2; exit 1; }
-mkdir -p "$(dirname "${out_iso}")"
-printf 'iso bytes\n' > "${out_iso}"
-printf 'checksum\n' > "${out_iso}.sha256"
-EOF
-chmod +x "${FAKE_WOODBOX}/tools/build-installer-iso.sh"
-
-cat > "${FAKE_WOODBOX}/tools/flash-installer-media.sh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-exit 0
-EOF
-chmod +x "${FAKE_WOODBOX}/tools/flash-installer-media.sh"
+SUBSTRATE_ISO="${TMP}/installer-substrate.iso"
+xorriso -as mkisofs \
+  -r \
+  -V "WOODBOX_FIXTURE" \
+  -o "${SUBSTRATE_ISO}" \
+  --grub2-mbr "${BOOT_DIR}/1-Boot-NoEmul.img" \
+  -partition_offset 16 \
+  --mbr-force-bootable \
+  -append_partition 2 28732ac11ff8d211ba4b00a0c93ec93b "${BOOT_DIR}/2-Boot-NoEmul.img" \
+  -appended_part_as_gpt \
+  -iso_mbr_part_type a2a0d0ebe5b9334487c068b6b72699c7 \
+  -c '/boot.catalog' \
+  -b '/boot/grub/i386-pc/eltorito.img' \
+  -no-emul-boot -boot-load-size 4 -boot-info-table --grub2-boot-info \
+  -eltorito-alt-boot \
+  -e '--interval:appended_partition_2:::' \
+  -no-emul-boot \
+  "${SUBSTRATE_TREE}" \
+  >/dev/null
 
 WOODBOX_ADAPTER_ROOT="${ROOT}/vendor/woodbox" \
-WOODBOX_REPO_ROOT="${FAKE_WOODBOX}" \
+OURBOX_MEDIA_COMPOSE_WORK_ROOT="${TMP}/work" \
   bash "${ROOT}/vendor/woodbox/compose-media.sh" \
     --mission-dir "${MISSION_DIR}" \
     --os-payload "${OS_DIR}/os-payload.tar.gz" \
     --os-meta-env "${OS_DIR}/os.meta.env" \
+    --substrate-iso "${SUBSTRATE_ISO}" \
     --output-dir "${TMP}/out"
 
 [[ -f "${TMP}/out/installer-ourbox-woodbox-x86-too-obx-wbx-base-ju3xk8-prod-v0.0.1.iso" ]] \

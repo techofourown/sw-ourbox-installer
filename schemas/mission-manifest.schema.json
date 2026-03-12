@@ -143,19 +143,24 @@
       "additionalProperties": false,
       "required": [
         "strategy",
-        "repo_path",
-        "repo_revision",
+        "artifact_ref",
+        "artifact_digest",
+        "release_channel",
         "compose_entrypoint"
       ],
       "properties": {
         "strategy": {
           "type": "string"
         },
-        "repo_path": {
+        "artifact_ref": {
           "type": "string",
           "minLength": 1
         },
-        "repo_revision": {
+        "artifact_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "release_channel": {
           "type": "string",
           "minLength": 1
         },

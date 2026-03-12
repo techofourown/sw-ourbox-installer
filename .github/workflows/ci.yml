@@ -24,6 +24,8 @@ jobs:
           bash -n tools/check-interactive-selection-smoke.sh
           bash -n tools/check-vendored-woodbox-pin.sh
           bash -n tools/check-woodbox-contract-smoke.sh
+          bash -n vendor/woodbox/flash-installer-media.sh
+          bash -n vendor/woodbox/lib.sh
           bash -n vendor/woodbox/compose-media.sh
           bash -n vendor/woodbox/validate-media.sh
 
@@ -55,8 +57,13 @@ jobs:
       - name: Interactive selection smoke
         run: bash tools/check-interactive-selection-smoke.sh
 
-      - name: Adapter repo discovery smoke
+      - name: Published substrate selection smoke
         run: bash tools/check-adapter-repo-discovery-smoke.sh
+
+      - name: Install compose smoke dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xorriso p7zip-full rsync
 
       - name: Woodbox contract smoke
         run: bash tools/check-woodbox-contract-smoke.sh

@@ -16,7 +16,6 @@ OUTPUT_DIR=""
 MISSION_ONLY=0
 COMPOSE_ONLY=0
 FLASH_DEVICE=""
-ADAPTER_REPO_ROOT=""
 VENDORED_ADAPTER_ROOT="${ROOT}/vendor/woodbox"
 VENDORED_METADATA_PARSER="${VENDORED_ADAPTER_ROOT}/strict-kv-metadata.py"
 MISSION_SCHEMA="${ROOT}/schemas/mission-manifest.schema.json"
@@ -52,62 +51,11 @@ Options:
   --airgap-ref REF            Exact airgap bundle ref to pull instead of using the baked bundle
   --output-dir DIR            Keep staged mission or composed media under DIR
                               (used only by explicit non-default modes)
-  --adapter-repo-root DIR     Path to the authoritative img-ourbox-woodbox checkout
-                              (otherwise autodiscover nested, sibling, then /techofourown)
   --mission-only              Stage the mission directory only; do not compose or flash media
   --compose-only              Compose mission media to disk but do not flash it
   --flash-device DEV          Flash to the given device without interactive media selection
   -h, --help                  Show help
 EOF
-}
-
-canonicalize_dir() {
-  (
-    cd "$1"
-    pwd -P
-  )
-}
-
-is_git_worktree() {
-  local candidate="$1"
-  git -C "${candidate}" rev-parse --is-inside-work-tree >/dev/null 2>&1
-}
-
-resolve_woodbox_repo_root() {
-  local explicit_root="${1:-}"
-  local env_root="${2:-}"
-  local candidate=""
-  local -a candidates=()
-
-  if [[ -n "${explicit_root}" ]]; then
-    candidates=("${explicit_root}")
-  elif [[ -n "${env_root}" ]]; then
-    candidates=("${env_root}")
-  else
-    candidates=(
-      "${ROOT}/img-ourbox-woodbox"
-      "${ROOT}/../img-ourbox-woodbox"
-      "/techofourown/img-ourbox-woodbox"
-    )
-  fi
-
-  for candidate in "${candidates[@]}"; do
-    [[ -d "${candidate}" ]] || continue
-    if is_git_worktree "${candidate}"; then
-      canonicalize_dir "${candidate}"
-      return 0
-    fi
-  done
-
-  if [[ -n "${explicit_root}" ]]; then
-    die "authoritative Woodbox repo not found: ${explicit_root}"
-  fi
-
-  if [[ -n "${env_root}" ]]; then
-    die "authoritative Woodbox repo not found: ${env_root}"
-  fi
-
-  die "authoritative Woodbox repo not found; tried ${ROOT}/img-ourbox-woodbox, ${ROOT}/../img-ourbox-woodbox, and /techofourown/img-ourbox-woodbox"
 }
 
 interactive_target_selection_enabled() {
@@ -218,11 +166,6 @@ while [[ $# -gt 0 ]]; do
       OUTPUT_DIR="$2"
       shift 2
       ;;
-    --adapter-repo-root)
-      [[ $# -ge 2 ]] || die "--adapter-repo-root requires a value"
-      ADAPTER_REPO_ROOT="$2"
-      shift 2
-      ;;
     --mission-only)
       MISSION_ONLY=1
       shift
@@ -263,7 +206,6 @@ need_cmd sha256sum
 need_cmd tar
 need_cmd find
 
-ADAPTER_REPO_ROOT="$(resolve_woodbox_repo_root "${ADAPTER_REPO_ROOT}" "${WOODBOX_REPO_ROOT:-}")"
 [[ -f "${VENDORED_ADAPTER_ROOT}/adapter.json" ]] || die "vendored Woodbox adapter not found: ${VENDORED_ADAPTER_ROOT}/adapter.json"
 [[ -f "${VENDORED_ADAPTER_ROOT}/compose-media.sh" ]] || die "vendored Woodbox compose script not found: ${VENDORED_ADAPTER_ROOT}/compose-media.sh"
 [[ -f "${VENDORED_ADAPTER_ROOT}/validate-media.sh" ]] || die "vendored Woodbox validate script not found: ${VENDORED_ADAPTER_ROOT}/validate-media.sh"
@@ -277,30 +219,14 @@ TMP_ROOT="$(mktemp -d "${WORK_ROOT}/prepare-installer-media.XXXXXX")"
 trap 'rm -rf "${TMP_ROOT}"' EXIT
 require_flash_path_or_explicit_mode
 
-substrate_head_revision="$(git -C "${ADAPTER_REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
-substrate_revision="${substrate_head_revision}"
-substrate_dirty=0
-if [[ -n "$(git -C "${ADAPTER_REPO_ROOT}" status --short 2>/dev/null || true)" ]]; then
-  substrate_dirty=1
-  substrate_revision="${substrate_revision}-dirty"
-fi
-substrate_repo="$(git -C "${ADAPTER_REPO_ROOT}" remote get-url github 2>/dev/null || printf '%s\n' "${ADAPTER_REPO_ROOT}")"
-
-ADAPTER_SOURCE_REPO="${substrate_repo}"
-ADAPTER_SOURCE_REVISION="${substrate_revision}"
+ADAPTER_SOURCE_REPO="vendored-local"
+ADAPTER_SOURCE_REVISION="unknown"
 VENDORED_PIN="${ROOT}/vendor/woodbox.upstream.env"
 if [[ -f "${VENDORED_PIN}" ]]; then
   # shellcheck disable=SC1090
   source "${VENDORED_PIN}"
   ADAPTER_SOURCE_REPO="${SOURCE_REPO:-${ADAPTER_SOURCE_REPO}}"
   ADAPTER_SOURCE_REVISION="${SOURCE_REVISION:-${ADAPTER_SOURCE_REVISION}}"
-  if [[ "${SOURCE_REVISION:-unknown}" != "${substrate_head_revision}" ]]; then
-    if (( substrate_dirty )); then
-      log "WARNING: vendored woodbox adapter pin (${SOURCE_REVISION:-unknown}) does not match local substrate repo revision (${substrate_revision})"
-    elif ! git -C "${ADAPTER_REPO_ROOT}" merge-base --is-ancestor "${SOURCE_REVISION:-unknown}" "${substrate_head_revision}" >/dev/null 2>&1; then
-      log "WARNING: vendored woodbox adapter pin (${SOURCE_REVISION:-unknown}) does not match local substrate repo revision (${substrate_revision})"
-    fi
-  fi
 fi
 
 adapter_dump="$(
@@ -323,6 +249,8 @@ airgap_tags = official["airgap_channel_tags"]
 if airgap_channel and airgap_channel not in airgap_tags:
     raise SystemExit(f"unsupported woodbox airgap channel: {airgap_channel}")
 
+installer_tags = official["installer_channel_tags"]
+
 values = [
     official["os_repo"],
     official["os_catalog_tag"],
@@ -338,6 +266,11 @@ values = [
     airgap_tags["beta"],
     airgap_tags["nightly"],
     airgap_tags["exp-labs"],
+    official["installer_repo"],
+    installer_tags["stable"],
+    installer_tags["beta"],
+    installer_tags["nightly"],
+    installer_tags["exp-labs"],
     str(adapter.get("minimum_media_size_bytes", "")),
     adapter.get("output_kind", ""),
     json.dumps(adapter.get("runtime_prompts_kept", [])),
@@ -346,7 +279,7 @@ print("\n".join(values))
 PY
 )"
 mapfile -t adapter_fields <<<"${adapter_dump}"
-[[ "${#adapter_fields[@]}" -eq 17 ]] || die "failed to load vendored woodbox adapter metadata"
+[[ "${#adapter_fields[@]}" -eq 22 ]] || die "failed to load vendored woodbox adapter metadata"
 OS_REPO="${adapter_fields[0]}"
 OS_CATALOG_TAG="${adapter_fields[1]}"
 OS_CHANNEL_TAG_STABLE="${adapter_fields[2]}"
@@ -361,9 +294,14 @@ AIRGAP_CHANNEL_TAG_STABLE="${adapter_fields[10]}"
 AIRGAP_CHANNEL_TAG_BETA="${adapter_fields[11]}"
 AIRGAP_CHANNEL_TAG_NIGHTLY="${adapter_fields[12]}"
 AIRGAP_CHANNEL_TAG_EXP_LABS="${adapter_fields[13]}"
-MINIMUM_MEDIA_SIZE_BYTES="${adapter_fields[14]}"
-OUTPUT_KIND="${adapter_fields[15]}"
-ADAPTER_RUNTIME_PROMPTS_JSON="${adapter_fields[16]}"
+INSTALLER_REPO="${adapter_fields[14]}"
+INSTALLER_CHANNEL_TAG_STABLE="${adapter_fields[15]}"
+INSTALLER_CHANNEL_TAG_BETA="${adapter_fields[16]}"
+INSTALLER_CHANNEL_TAG_NIGHTLY="${adapter_fields[17]}"
+INSTALLER_CHANNEL_TAG_EXP_LABS="${adapter_fields[18]}"
+MINIMUM_MEDIA_SIZE_BYTES="${adapter_fields[19]}"
+OUTPUT_KIND="${adapter_fields[20]}"
+ADAPTER_RUNTIME_PROMPTS_JSON="${adapter_fields[21]}"
 
 case "${OURBOX_CACHE_REUSE_POLICY}" in
   ask|always|never) ;;
@@ -733,6 +671,41 @@ airgap_channel_tag_for() {
     exp-labs) printf '%s\n' "${AIRGAP_CHANNEL_TAG_EXP_LABS}" ;;
     *) printf '%s\n' "${channel}-${EXPECTED_AIRGAP_ARCH}" ;;
   esac
+}
+
+installer_channel_tag_for() {
+  local channel="${1:-}"
+
+  case "${channel}" in
+    stable) printf '%s\n' "${INSTALLER_CHANNEL_TAG_STABLE}" ;;
+    beta) printf '%s\n' "${INSTALLER_CHANNEL_TAG_BETA}" ;;
+    nightly) printf '%s\n' "${INSTALLER_CHANNEL_TAG_NIGHTLY}" ;;
+    exp-labs) printf '%s\n' "${INSTALLER_CHANNEL_TAG_EXP_LABS}" ;;
+    *) printf '%s\n' "${OURBOX_TARGET:-x86}-installer-${channel}" ;;
+  esac
+}
+
+selected_installer_release_channel() {
+  case "${SELECTED_OS_RELEASE_CHANNEL:-}" in
+    stable|beta|nightly|exp-labs) printf '%s\n' "${SELECTED_OS_RELEASE_CHANNEL}" ;;
+    *) printf '%s\n' "stable" ;;
+  esac
+}
+
+verify_installer_substrate_cache_dir() {
+  local cache_dir="$1"
+  local iso_path="${cache_dir}/installer.iso"
+  local sha_path="${cache_dir}/installer.iso.sha256"
+  local expected=""
+  local actual=""
+
+  [[ -f "${iso_path}" ]] || die "installer substrate missing installer.iso in ${cache_dir}"
+  [[ -f "${sha_path}" ]] || die "installer substrate missing installer.iso.sha256 in ${cache_dir}"
+  expected="$(awk 'NF>=1 {print $1; exit}' "${sha_path}")"
+  expected="${expected,,}"
+  [[ "${expected}" =~ ^[0-9a-f]{64}$ ]] || die "invalid sha256 in ${sha_path}"
+  actual="$(sha256sum "${iso_path}" | awk '{print $1}')"
+  [[ "${expected}" == "${actual}" ]] || die "installer substrate sha mismatch (expected ${expected}, got ${actual})"
 }
 
 list_os_catalog_entries() {
@@ -1492,10 +1465,19 @@ is_sha256_digest "${BAKED_AIRGAP_DIGEST}" || die "selected OS payload is missing
 
 SELECTED_AIRGAP_REF=""
 determine_airgap_ref "${PLATFORM_CONTRACT_DIGEST}"
-maybe_confirm_cache_reuse "the selected mission artifacts" "${SELECTED_OS_REF}" "${SELECTED_AIRGAP_REF}"
+SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL="$(selected_installer_release_channel)"
+SELECTED_INSTALLER_SUBSTRATE_REF="${INSTALLER_REPO}:$(installer_channel_tag_for "${SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL}")"
+maybe_confirm_cache_reuse "the selected mission artifacts" "${SELECTED_OS_REF}" "${SELECTED_AIRGAP_REF}" "${SELECTED_INSTALLER_SUBSTRATE_REF}"
 cache_pull_oci_artifact "${SELECTED_AIRGAP_REF}" "${CACHE_REUSE_ENABLED}" AIRGAP_CACHE_DIR
 SELECTED_AIRGAP_DIGEST="${OURBOX_CACHE_LAST_DIGEST}"
 SELECTED_AIRGAP_PINNED_REF="${OURBOX_CACHE_LAST_PINNED_REF}"
+
+cache_pull_oci_artifact "${SELECTED_INSTALLER_SUBSTRATE_REF}" "${CACHE_REUSE_ENABLED}" INSTALLER_SUBSTRATE_CACHE_DIR
+SELECTED_INSTALLER_SUBSTRATE_DIGEST="${OURBOX_CACHE_LAST_DIGEST}"
+SELECTED_INSTALLER_SUBSTRATE_PINNED_REF="${OURBOX_CACHE_LAST_PINNED_REF}"
+verify_installer_substrate_cache_dir "${INSTALLER_SUBSTRATE_CACHE_DIR}"
+INSTALLER_SUBSTRATE_ISO="$(find_pulled_file "${INSTALLER_SUBSTRATE_CACHE_DIR}" "installer.iso")"
+[[ -f "${INSTALLER_SUBSTRATE_ISO}" ]] || die "cached installer substrate missing installer.iso: ${INSTALLER_SUBSTRATE_CACHE_DIR}"
 
 AIRGAP_TARBALL="$(find_pulled_file "${AIRGAP_CACHE_DIR}" "airgap-platform.tar.gz")"
 [[ -f "${AIRGAP_TARBALL}" ]] || die "cached airgap artifact missing airgap-platform.tar.gz: ${AIRGAP_CACHE_DIR}"
@@ -1602,8 +1584,8 @@ cp -f "${AIRGAP_MANIFEST}" "${AIRGAP_STAGE_DIR}/manifest.env"
 printf '%s\n' "${SELECTED_AIRGAP_PINNED_REF}" > "${AIRGAP_STAGE_DIR}/artifact.ref"
 
 export MISSION_DIR COMPOSE_ID COMPOSED_AT TARGET COMPOSER_REVISION ADAPTER_SOURCE_REPO ADAPTER_SOURCE_REVISION
-export ADAPTER_REPO_ROOT VENDORED_ADAPTER_ROOT ADAPTER_RUNTIME_PROMPTS_JSON MINIMUM_MEDIA_SIZE_BYTES OUTPUT_KIND
-export SUBSTRATE_SOURCE_REPO="${substrate_repo}" SUBSTRATE_SOURCE_REVISION="${substrate_revision}"
+export VENDORED_ADAPTER_ROOT ADAPTER_RUNTIME_PROMPTS_JSON MINIMUM_MEDIA_SIZE_BYTES OUTPUT_KIND
+export SELECTED_INSTALLER_SUBSTRATE_PINNED_REF SELECTED_INSTALLER_SUBSTRATE_DIGEST SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL
 export SELECTED_OS_PINNED_REF SELECTED_OS_DIGEST EXPECTED_OS_ARTIFACT_TYPE PLATFORM_CONTRACT_DIGEST PLATFORM_CONTRACT_SOURCE
 export PLATFORM_CONTRACT_REVISION PLATFORM_CONTRACT_VERSION PLATFORM_CONTRACT_CREATED SELECTED_OS_SELECTION_SOURCE SELECTED_OS_RELEASE_CHANNEL
 export SELECTED_AIRGAP_PINNED_REF SELECTED_AIRGAP_DIGEST SELECTED_AIRGAP_SELECTION_MODE SELECTED_AIRGAP_SELECTION_SOURCE SELECTED_AIRGAP_RELEASE_CHANNEL
@@ -1674,9 +1656,10 @@ manifest = {
       "mission_only": os.environ["MISSION_ONLY"] == "1",
     },
     "substrate": {
-        "strategy": "target-repo-build",
-        "repo_path": os.environ["ADAPTER_REPO_ROOT"],
-        "repo_revision": os.environ["SUBSTRATE_SOURCE_REVISION"],
+        "strategy": "published-installer-substrate",
+        "artifact_ref": os.environ["SELECTED_INSTALLER_SUBSTRATE_PINNED_REF"],
+        "artifact_digest": os.environ["SELECTED_INSTALLER_SUBSTRATE_DIGEST"],
+        "release_channel": os.environ["SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL"],
         "compose_entrypoint": "tools/media-adapter/compose-media.sh",
     },
     "platform_contract": {
@@ -1733,6 +1716,7 @@ bash "${VENDORED_ADAPTER_ROOT}/validate-media.sh" \
 
 log "Selected OS artifact: ${SELECTED_OS_PINNED_REF} (${SELECTED_OS_SELECTION_SOURCE})"
 log "Selected airgap bundle: ${SELECTED_AIRGAP_PINNED_REF} (${SELECTED_AIRGAP_SELECTION_SOURCE})"
+log "Selected installer substrate: ${SELECTED_INSTALLER_SUBSTRATE_PINNED_REF} (${SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL})"
 
 if [[ "${MISSION_ONLY}" == "1" ]]; then
   mkdir -p "${OUTPUT_DIR}"
@@ -1770,6 +1754,7 @@ compose_cmd=(
   --mission-dir "${MISSION_DIR}"
   --os-payload "${OS_STAGE_DIR}/os-payload.tar.gz"
   --os-meta-env "${OS_STAGE_DIR}/os.meta.env"
+  --substrate-iso "${INSTALLER_SUBSTRATE_ISO}"
   --output-dir "${COMPOSE_OUTPUT_DIR}"
 )
 if [[ -n "${FLASH_DEVICE}" ]]; then
@@ -1778,7 +1763,7 @@ fi
 
 log "Invoking vendored Woodbox media adapter"
 WOODBOX_ADAPTER_ROOT="${VENDORED_ADAPTER_ROOT}" \
-WOODBOX_REPO_ROOT="${ADAPTER_REPO_ROOT}" \
+OURBOX_MEDIA_COMPOSE_WORK_ROOT="${WORK_ROOT}" \
   "${compose_cmd[@]}"
 
 if [[ "${COMPOSE_ONLY}" == "1" || -n "${OUTPUT_DIR}" ]]; then

@@ -56,7 +56,7 @@
     "envsubst"
   ],
   "notes": [
-    "Phase-one compose uses the checked-out img-ourbox-woodbox repo as the substrate build source while the unified host repo owns selection and mission assembly.",
+    "Phase-one compose uses the published Woodbox installer substrate artifact while the unified host repo owns selection and mission assembly.",
     "Host-composed Woodbox mission media embeds the selected OS payload plus the selected airgap bundle and mission manifest.",
     "The Woodbox preinstall runtime consumes the embedded mission as the authoritative local source for OS provenance and selected airgap installation input."
   ]

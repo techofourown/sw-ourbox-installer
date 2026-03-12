@@ -12,18 +12,17 @@ Phase-one scope is intentionally narrow:
 - mission output: write a `mission-manifest.json` plus staged OS and airgap
   artifact bytes/metadata
 - media compose: delegate to a vendored Woodbox media adapter snapshot while
-  using the checked-out `img-ourbox-woodbox` repo as the substrate build source
+  pulling the published Woodbox installer substrate artifact automatically
 
 What phase one does not do yet:
 
 - Matchbox or Tinderbox support
-- published-substrate composition without a checked-out target repo
 - target-independent substrate composition
 
 The immediate win is narrower but real: the host now resolves the Woodbox OS
-artifact and selected airgap bundle up front, stages both into a mission
-directory, and invokes a vendored target adapter to compose installer media that
-installs from local mission bytes.
+artifact, selected airgap bundle, and published Woodbox installer substrate up
+front, stages the mission directory, and invokes a vendored target adapter to
+compose installer media that installs from local mission bytes.
 
 For Woodbox specifically, phase one already includes the purge of target-side
 artifact browsing and pulling from the supported install path. The remaining
@@ -31,7 +30,7 @@ later-phase cleanup applies to other targets, especially Matchbox.
 
 ## Usage
 
-From a workspace that also contains `img-ourbox-woodbox`:
+From a normal checkout of `sw-ourbox-installer`:
 
 ```bash
 ./tools/prepare-installer-media.sh
@@ -67,7 +66,6 @@ Useful flags:
 - `--compose-only` to compose installer media to disk under `./out/<target>` (or `--output-dir`) without flashing
 - `--output-dir DIR` to keep staged mission or composed media in a specific directory for those explicit non-default modes
 - `--flash-device /dev/...` to bypass the interactive USB picker and flash that exact device
-- `--adapter-repo-root /path/to/img-ourbox-woodbox` when the target repo is not beside this repo, nested inside it, or at `/techofourown/img-ourbox-woodbox`
 - `--help` to print the optional CI/dev flags without changing the normal no-flag operator flow
 
 Cache behavior:
@@ -88,5 +86,5 @@ Cache behavior:
   - pinned snapshot of the Woodbox adapter surface used for phase-one execution
 
 Phase one uses the vendored adapter scripts as the execution surface and points
-them at the checked-out target repo only for substrate-specific build inputs and
-tooling.
+them at the published Woodbox installer substrate artifact for target-specific
+media composition.
