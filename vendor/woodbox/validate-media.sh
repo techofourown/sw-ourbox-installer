@@ -70,7 +70,6 @@ import re
 import subprocess
 import sys
 import tarfile
-import tempfile
 
 with open(sys.argv[1], "r", encoding="utf-8") as handle:
     adapter = json.load(handle)
@@ -140,49 +139,56 @@ def validate_sha256_sidecar(label: str, payload_relpath: str, payload_path: path
         raise SystemExit(f"{label}.sha256 does not match {label}")
 
 
-def validate_airgap_bundle(payload_path: pathlib.Path, required_contract: str) -> None:
+def normalize_tar_member_name(name: str) -> str:
+    member_path = pathlib.PurePosixPath(name)
+    if member_path.is_absolute():
+        raise SystemExit("mission selected_airgap.payload_relpath must not contain absolute paths")
+    if ".." in member_path.parts:
+        raise SystemExit("mission selected_airgap.payload_relpath must not escape the extracted bundle root")
+    parts = [part for part in member_path.parts if part not in ("", ".")]
+    return pathlib.PurePosixPath(*parts).as_posix() if parts else ""
+
+
+def validate_airgap_bundle(payload_path: pathlib.Path, manifest_path: pathlib.Path, required_contract: str) -> None:
     try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            bundle_dir = pathlib.Path(tmpdir)
-            with tarfile.open(payload_path, "r:gz") as archive:
-                members = archive.getmembers()
-                for member in members:
-                    member_path = pathlib.Path(member.name)
-                    if member_path.is_absolute():
-                        raise SystemExit("mission selected_airgap.payload_relpath must not contain absolute paths")
-                    resolved_member = (bundle_dir / member.name).resolve()
-                    try:
-                        resolved_member.relative_to(bundle_dir)
-                    except ValueError as exc:
-                        raise SystemExit("mission selected_airgap.payload_relpath must not escape the extracted bundle root") from exc
-                    if member.issym() or member.islnk():
-                        raise SystemExit("mission selected_airgap.payload_relpath must not contain symlinks or hard links")
-                archive.extractall(bundle_dir)
+        with tarfile.open(payload_path, "r:gz") as archive:
+            file_members: dict[str, tarfile.TarInfo] = {}
+            has_platform_image_tar = False
+            for member in archive.getmembers():
+                normalized_name = normalize_tar_member_name(member.name)
+                if member.issym() or member.islnk():
+                    raise SystemExit("mission selected_airgap.payload_relpath must not contain symlinks or hard links")
+                if not normalized_name or member.isdir():
+                    continue
+                file_members[normalized_name] = member
+                if normalized_name.startswith("platform/images/") and normalized_name.endswith(".tar"):
+                    has_platform_image_tar = True
 
-            bundle_manifest = bundle_dir / "manifest.env"
-            airgap_images_tar = bundle_dir / "k3s" / f"k3s-airgap-images-{expected_arch}.tar"
-            platform_images_dir = bundle_dir / "platform" / "images"
-
-            if not bundle_manifest.is_file():
-                raise SystemExit("mission selected_airgap.payload_relpath bundle missing manifest.env")
-            if not (bundle_dir / "k3s" / "k3s").is_file():
-                raise SystemExit("mission selected_airgap.payload_relpath bundle missing k3s binary")
-            if not airgap_images_tar.is_file():
-                raise SystemExit(f"mission selected_airgap.payload_relpath bundle missing k3s airgap images tar for {expected_arch}")
-            if not (bundle_dir / "platform" / "images.lock.json").is_file():
-                raise SystemExit("mission selected_airgap.payload_relpath bundle missing platform/images.lock.json")
-            if not (bundle_dir / "platform" / "profile.env").is_file():
-                raise SystemExit("mission selected_airgap.payload_relpath bundle missing platform/profile.env")
-            if not platform_images_dir.is_dir():
-                raise SystemExit("mission selected_airgap.payload_relpath bundle missing platform/images directory")
-            if not any(platform_images_dir.glob("*.tar")):
+            required_files = {
+                "manifest.env": "mission selected_airgap.payload_relpath bundle missing manifest.env",
+                "k3s/k3s": "mission selected_airgap.payload_relpath bundle missing k3s binary",
+                f"k3s/k3s-airgap-images-{expected_arch}.tar": f"mission selected_airgap.payload_relpath bundle missing k3s airgap images tar for {expected_arch}",
+                "platform/images.lock.json": "mission selected_airgap.payload_relpath bundle missing platform/images.lock.json",
+                "platform/profile.env": "mission selected_airgap.payload_relpath bundle missing platform/profile.env",
+            }
+            for required_name, error_message in required_files.items():
+                if required_name not in file_members:
+                    raise SystemExit(error_message)
+            if not has_platform_image_tar:
                 raise SystemExit("mission selected_airgap.payload_relpath bundle missing platform image tar payloads")
+
+            manifest_member = file_members["manifest.env"]
+            extracted_manifest = archive.extractfile(manifest_member)
+            if extracted_manifest is None:
+                raise SystemExit("mission selected_airgap.payload_relpath bundle manifest.env is unreadable")
+            if extracted_manifest.read() != manifest_path.read_bytes():
+                raise SystemExit("mission selected_airgap.manifest_relpath must match the tarball manifest.env content")
 
             parse_result = subprocess.run(
                 [
                     sys.executable,
                     str(strict_metadata_parser),
-                    str(bundle_manifest),
+                    str(manifest_path),
                     "--allow",
                     "OURBOX_AIRGAP_PLATFORM_SCHEMA",
                     "--allow",
@@ -256,21 +262,21 @@ def validate_airgap_bundle(payload_path: pathlib.Path, required_contract: str) -
             )
             if parse_result.returncode != 0:
                 detail = (parse_result.stderr or parse_result.stdout).strip()
-                raise SystemExit(f"failed to parse extracted airgap-platform manifest: {detail}")
+                raise SystemExit(f"failed to parse staged airgap-platform manifest: {detail}")
 
             manifest_fields = parse_result.stdout.splitlines()
             if len(manifest_fields) != 10:
-                raise SystemExit("extracted airgap-platform manifest parse produced an unexpected field set")
+                raise SystemExit("staged airgap-platform manifest parse produced an unexpected field set")
             if not sha256_re.fullmatch(manifest_fields[4]):
-                raise SystemExit("extracted airgap-platform manifest carries invalid OURBOX_PLATFORM_CONTRACT_DIGEST")
+                raise SystemExit("staged airgap-platform manifest carries invalid OURBOX_PLATFORM_CONTRACT_DIGEST")
             if manifest_fields[4] != required_contract:
                 raise SystemExit(
-                    "extracted airgap-platform manifest contract digest must match mission selected_airgap.platform_contract_digest"
+                    "staged airgap-platform manifest contract digest must match mission selected_airgap.platform_contract_digest"
                 )
             if manifest_fields[5] != expected_arch:
-                raise SystemExit(f"extracted airgap-platform manifest arch mismatch: expected {expected_arch}, got {manifest_fields[5]}")
+                raise SystemExit(f"staged airgap-platform manifest arch mismatch: expected {expected_arch}, got {manifest_fields[5]}")
             if not plain_sha256_re.fullmatch(manifest_fields[9]):
-                raise SystemExit("extracted airgap-platform manifest carries invalid OURBOX_PLATFORM_IMAGES_LOCK_SHA256")
+                raise SystemExit("staged airgap-platform manifest carries invalid OURBOX_PLATFORM_IMAGES_LOCK_SHA256")
     except tarfile.TarError as exc:
         raise SystemExit(f"mission selected_airgap.payload_relpath must be a valid gzip tar archive: {exc}") from exc
 
@@ -353,9 +359,9 @@ if not payload_relpath:
 if not manifest_relpath:
     raise SystemExit("mission selected_airgap.manifest_relpath must be set")
 airgap_payload_path = require_staged_file("mission selected_airgap.payload_relpath", payload_relpath)
-require_staged_file("mission selected_airgap.manifest_relpath", manifest_relpath)
+airgap_manifest_path = require_staged_file("mission selected_airgap.manifest_relpath", manifest_relpath)
 validate_sha256_sidecar("mission selected_airgap.payload.relpath", payload_relpath, airgap_payload_path)
-validate_airgap_bundle(airgap_payload_path, airgap_contract)
+validate_airgap_bundle(airgap_payload_path, airgap_manifest_path, airgap_contract)
 PY
 
 payload_check="$(
