@@ -36,18 +36,33 @@ From a workspace that also contains `img-ourbox-woodbox`:
 ```bash
 ./tools/prepare-installer-media.sh \
   --target woodbox \
-  --os-channel stable \
-  --airgap-channel stable \
   --output-dir ./out/woodbox
 ```
 
+When run from a terminal, the host composer now mirrors the old installer UX:
+
+- it prompts for the OS artifact first
+- `ENTER` accepts the default lane choice
+- `c` chooses a different lane
+- `l` lists catalog rows
+- `r` enters a custom OCI ref
+- `o` overrides the upstream repo/catalog
+- after OS selection, it prompts for the airgap bundle with the same flow
+- then it lists removable USB target media, makes you choose by number, and
+  requires `SELECT` before the compose/flash step continues
+
+Passing `--os-channel` or `--airgap-channel` changes the default lane shown in
+those prompts. Passing `--os-ref` or `--airgap-ref` skips the corresponding
+prompt and uses the exact ref non-interactively.
+
 Useful flags:
 
-- `--os-ref REF` to choose an explicit OS artifact ref instead of catalog-first channel resolution
-- `--airgap-ref REF` to choose an explicit airgap bundle ref instead of the baked bundle or channel resolution
-- `--airgap-channel CHANNEL` to choose a host-selected contract-matching airgap bundle instead of the baked bundle
+- `--os-channel CHANNEL` to change the default OS lane offered in the host-side prompt
+- `--os-ref REF` to choose an explicit OS artifact ref instead of the interactive picker
+- `--airgap-channel CHANNEL` to change the default host-selected airgap lane offered in the prompt
+- `--airgap-ref REF` to choose an explicit airgap bundle ref instead of the interactive picker or baked default
 - `--mission-only` to stop after staging the mission directory and manifest
-- `--flash-device /dev/...` to pass the composed ISO to the Woodbox adapter for flashing
+- `--flash-device /dev/...` to bypass the interactive USB picker and flash that exact device
 - `--adapter-repo-root /path/to/img-ourbox-woodbox` when the target repo is not beside this repo, nested inside it, or at `/techofourown/img-ourbox-woodbox`
 
 Cache behavior:
