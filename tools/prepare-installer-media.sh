@@ -7,12 +7,12 @@ source "${ROOT}/tools/lib.sh"
 # shellcheck disable=SC1091
 source "${ROOT}/tools/cache.sh"
 
-TARGET="woodbox"
+TARGET=""
 OS_CHANNEL="stable"
 OS_REF=""
 AIRGAP_CHANNEL=""
 AIRGAP_REF=""
-OUTPUT_DIR="${ROOT}/out/woodbox"
+OUTPUT_DIR=""
 MISSION_ONLY=0
 FLASH_DEVICE=""
 ADAPTER_REPO_ROOT=""
@@ -30,10 +30,11 @@ usage() {
   cat <<EOF
 Usage: $0 [options]
 
-Phase-one unified host-side mission prep for Woodbox.
+Phase-one unified host-side mission prep for OurBox targets.
 
 Options:
-  --target woodbox            Target to compose (only woodbox is supported now)
+  --target TARGET             Preselect the target type for the UI
+                              (currently only woodbox is supported)
   --os-channel CHANNEL        Preferred OS channel for interactive selection or
                               non-interactive resolution when --os-ref is not set
                               (default: stable)
@@ -100,6 +101,65 @@ resolve_woodbox_repo_root() {
   die "authoritative Woodbox repo not found; tried ${ROOT}/img-ourbox-woodbox, ${ROOT}/../img-ourbox-woodbox, and /techofourown/img-ourbox-woodbox"
 }
 
+interactive_target_selection_enabled() {
+  [[ -t 0 && -t 1 ]]
+}
+
+default_output_dir_for_target() {
+  local target="$1"
+  printf '%s/out/%s\n' "${ROOT}" "${target}"
+}
+
+show_target_default_choice() {
+  local target="$1"
+
+  echo
+  echo "Host-side target selection"
+  echo "Default: ${target}"
+  echo "Options:"
+  echo "  [ENTER] Use default"
+  echo "  1       woodbox"
+  echo "  q       Quit"
+  echo
+}
+
+interactive_select_target() {
+  local choice=""
+  local default_target="woodbox"
+
+  while [[ -z "${TARGET}" ]]; do
+    show_target_default_choice "${default_target}"
+    read -r -p "Choice: " choice
+
+    case "${choice}" in
+      "")
+        TARGET="${default_target}"
+        ;;
+      1)
+        TARGET="woodbox"
+        ;;
+      q|Q)
+        die "Mission compose aborted by user"
+        ;;
+      *)
+        log "Unknown option."
+        ;;
+    esac
+  done
+}
+
+determine_target() {
+  if [[ -n "${TARGET}" ]]; then
+    return 0
+  fi
+
+  if interactive_target_selection_enabled; then
+    interactive_select_target
+  else
+    TARGET="woodbox"
+  fi
+}
+
 if [[ "${OURBOX_PREPARE_INSTALLER_LIBRARY_ONLY:-0}" == "1" ]]; then
   return 0 2>/dev/null || exit 0
 fi
@@ -161,7 +221,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "${TARGET}" == "woodbox" ]] || die "phase one only supports --target woodbox"
+determine_target
+[[ "${TARGET}" == "woodbox" ]] || die "phase one only supports target 'woodbox'"
+[[ -n "${OUTPUT_DIR}" ]] || OUTPUT_DIR="$(default_output_dir_for_target "${TARGET}")"
 [[ "${MISSION_ONLY}" == "0" || -z "${FLASH_DEVICE}" ]] || die "--flash-device cannot be combined with --mission-only"
 
 need_cmd python3

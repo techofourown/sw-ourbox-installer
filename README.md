@@ -34,13 +34,12 @@ later-phase cleanup applies to other targets, especially Matchbox.
 From a workspace that also contains `img-ourbox-woodbox`:
 
 ```bash
-./tools/prepare-installer-media.sh \
-  --target woodbox \
-  --output-dir ./out/woodbox
+./tools/prepare-installer-media.sh
 ```
 
 When run from a terminal, the host composer now mirrors the old installer UX:
 
+- it prompts for the target type first
 - it prompts for the OS artifact first
 - `ENTER` accepts the default lane choice
 - `c` chooses a different lane
@@ -51,16 +50,18 @@ When run from a terminal, the host composer now mirrors the old installer UX:
 - then it lists removable USB target media, makes you choose by number, and
   requires `SELECT` before the compose/flash step continues
 
-Passing `--os-channel` or `--airgap-channel` changes the default lane shown in
-those prompts. Passing `--os-ref` or `--airgap-ref` skips the corresponding
-prompt and uses the exact ref non-interactively.
+Passing `--target`, `--os-channel`, or `--airgap-channel` changes the default
+choice shown in those prompts. Passing `--os-ref` or `--airgap-ref` skips the
+corresponding prompt and uses the exact ref non-interactively.
 
 Useful flags:
 
+- `--target TARGET` to preselect the target type instead of using the interactive target picker
 - `--os-channel CHANNEL` to change the default OS lane offered in the host-side prompt
 - `--os-ref REF` to choose an explicit OS artifact ref instead of the interactive picker
 - `--airgap-channel CHANNEL` to change the default host-selected airgap lane offered in the prompt
 - `--airgap-ref REF` to choose an explicit airgap bundle ref instead of the interactive picker or baked default
+- `--output-dir DIR` to override the default output location under `./out/<target>`
 - `--mission-only` to stop after staging the mission directory and manifest
 - `--flash-device /dev/...` to bypass the interactive USB picker and flash that exact device
 - `--adapter-repo-root /path/to/img-ourbox-woodbox` when the target repo is not beside this repo, nested inside it, or at `/techofourown/img-ourbox-woodbox`
