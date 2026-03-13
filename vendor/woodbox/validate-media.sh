@@ -410,6 +410,20 @@ if selected_applications is not None:
         raise SystemExit("mission application catalog catalog_id must match selected_applications.catalog_id")
     if str(catalog_data.get("catalog_name", "")) != catalog_name:
         raise SystemExit("mission application catalog catalog_name must match selected_applications.catalog_name")
+    catalog_apps = catalog_data.get("apps")
+    if not isinstance(catalog_apps, list) or not catalog_apps:
+        raise SystemExit("mission application catalog must declare a non-empty apps list")
+    catalog_app_ids = set()
+    for app in catalog_apps:
+        app_id = str(app.get("id", "")).strip()
+        if not app_id:
+            raise SystemExit("mission application catalog contains an app without an id")
+        catalog_app_ids.add(app_id)
+    unknown_app_ids = [app_id for app_id in normalized_app_ids if app_id not in catalog_app_ids]
+    if unknown_app_ids:
+        raise SystemExit(
+            "mission selected_applications.selected_app_ids must be a subset of mission application catalog apps"
+        )
 
     with selection_path.open("r", encoding="utf-8") as handle:
         selection_data = json.load(handle)

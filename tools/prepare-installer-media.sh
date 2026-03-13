@@ -1792,7 +1792,6 @@ load_application_catalog_metadata() {
   [[ -f "${APPLICATION_CATALOG_FILE}" ]] || return 0
 
   local catalog_dump=""
-  local -a catalog_fields=()
   catalog_dump="$(
     python3 - <<'PY' "${APPLICATION_CATALOG_FILE}"
 import json
@@ -1839,22 +1838,57 @@ if unknown_defaults:
         f"{catalog_path} declares unknown default_app_ids: {', '.join(unknown_defaults)}"
     )
 
-print(catalog_id)
-print(catalog_name)
-print(catalog_description)
-print(json.dumps(default_app_ids))
-print(json.dumps(all_app_ids))
+print(
+    json.dumps(
+        {
+            "catalog_id": catalog_id,
+            "catalog_name": catalog_name,
+            "catalog_description": catalog_description,
+            "default_app_ids": default_app_ids,
+            "all_app_ids": all_app_ids,
+        },
+        separators=(",", ":"),
+    )
+)
 PY
   )" || die "failed to parse application catalog metadata: ${APPLICATION_CATALOG_FILE}"
-  mapfile -t catalog_fields <<<"${catalog_dump}"
-  [[ "${#catalog_fields[@]}" -eq 5 ]] || die "application catalog parse produced an unexpected field set: ${APPLICATION_CATALOG_FILE}"
 
   APPLICATION_CATALOG_PRESENT=1
-  APPLICATION_CATALOG_ID="${catalog_fields[0]}"
-  APPLICATION_CATALOG_NAME="${catalog_fields[1]}"
-  APPLICATION_CATALOG_DESCRIPTION="${catalog_fields[2]}"
-  APPLICATION_DEFAULT_APP_IDS_JSON="${catalog_fields[3]}"
-  APPLICATION_ALL_APP_IDS_JSON="${catalog_fields[4]}"
+  APPLICATION_CATALOG_ID="$(
+    python3 - <<'PY' "${catalog_dump}"
+import json
+import sys
+print(json.loads(sys.argv[1])["catalog_id"])
+PY
+  )"
+  APPLICATION_CATALOG_NAME="$(
+    python3 - <<'PY' "${catalog_dump}"
+import json
+import sys
+print(json.loads(sys.argv[1])["catalog_name"])
+PY
+  )"
+  APPLICATION_CATALOG_DESCRIPTION="$(
+    python3 - <<'PY' "${catalog_dump}"
+import json
+import sys
+print(json.loads(sys.argv[1])["catalog_description"])
+PY
+  )"
+  APPLICATION_DEFAULT_APP_IDS_JSON="$(
+    python3 - <<'PY' "${catalog_dump}"
+import json
+import sys
+print(json.dumps(json.loads(sys.argv[1])["default_app_ids"]))
+PY
+  )"
+  APPLICATION_ALL_APP_IDS_JSON="$(
+    python3 - <<'PY' "${catalog_dump}"
+import json
+import sys
+print(json.dumps(json.loads(sys.argv[1])["all_app_ids"]))
+PY
+  )"
 }
 
 application_ids_display_from_json() {
