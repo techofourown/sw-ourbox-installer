@@ -366,6 +366,37 @@
         "selection_relpath": {
           "type": "string",
           "minLength": 1
+        },
+        "source_catalogs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "catalog_id",
+              "catalog_name",
+              "artifact_ref",
+              "artifact_digest"
+            ],
+            "properties": {
+              "catalog_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "catalog_name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "artifact_ref": {
+                "type": "string",
+                "minLength": 1
+              },
+              "artifact_digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          }
         }
       }
     },

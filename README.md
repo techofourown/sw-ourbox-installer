@@ -7,13 +7,15 @@ Phase-one scope is intentionally narrow:
 
 - target support: `woodbox` only
 - host-side selection: choose an exact Woodbox OS artifact on the host
-- host-side application catalog selection: stage either the baked
-  application-catalog bundle from the chosen OS payload or an explicit
-  contract-matching host-selected bundle
-- host-side application selection: use the catalog defaults, install all apps
-  from the chosen catalog, or choose a custom app set from that catalog
+- host-side application catalog selection: choose one or more application
+  catalogs on the host and merge them into one effective catalog
+- host-side application selection: reuse the same selector logic against that
+  merged catalog:
+  - merged catalog defaults
+  - all apps from the merged catalog
+  - a custom app subset from the merged catalog
 - mission output: write a `mission-manifest.json` plus staged OS bytes,
-  application-catalog bundle bytes, and selected-app metadata
+  synthesized application bundle bytes, and selected-app metadata
 - media compose: delegate to a vendored Woodbox media adapter snapshot while
   pulling the published Woodbox installer substrate artifact automatically
 
@@ -23,10 +25,10 @@ What phase one does not do yet:
 - target-independent substrate composition
 
 The immediate win is narrower but real: the host now resolves the Woodbox OS
-artifact, selected application-catalog bundle, selected app set, and published
-Woodbox installer substrate up front, stages the mission directory, and
-invokes a vendored target adapter to compose installer media that installs
-from local mission bytes.
+artifact, one or more selected application catalogs, the selected app set, and
+the published Woodbox installer substrate up front, stages the mission
+directory, and invokes a vendored target adapter to compose installer media
+that installs from local mission bytes.
 
 For Woodbox specifically, phase one already includes the purge of target-side
 artifact browsing and pulling from the supported install path. The remaining
@@ -52,11 +54,11 @@ When run from a terminal, the host composer now mirrors the old installer UX:
 - `l` lists catalog rows newest-first with `n`/`p` page navigation
 - `r` enters a custom OCI ref
 - `o` overrides the upstream repo/catalog
-- after OS selection, it prompts for the application catalog bundle with the
-  same flow
-- after the catalog bundle is chosen, it prompts for the applications:
-  - `ENTER` uses the catalog default app set
-  - `a` installs all apps from that catalog
+- after OS selection, it prompts for one or more application catalogs
+- after the catalogs are chosen, it merges them into one effective catalog and
+  prompts for the applications:
+  - `ENTER` uses the merged default app set
+  - `a` installs all apps from the merged catalog
   - `c` chooses a custom app set by number
 - then it lists removable USB target media, makes you choose by number, and
   requires `SELECT` before the compose/flash step continues
@@ -73,10 +75,10 @@ Useful flags:
 - `--target TARGET` to preselect the target type instead of using the interactive target picker
 - `--os-channel CHANNEL` to change the default OS lane offered in the host-side prompt
 - `--os-ref REF` to choose an explicit OS artifact ref instead of the interactive picker
-- `--airgap-channel CHANNEL` to change the default application-catalog lane offered in the prompt
-- `--airgap-ref REF` to choose an explicit application-catalog bundle ref instead of the interactive picker or baked default
-- `--all-apps` to install every app published by the selected catalog
-- `--app-ids ID[,ID...]` to install an explicit subset of apps from the selected catalog
+- `--airgap-channel CHANNEL[,CHANNEL...]` to preselect one or more application catalog ids in the prompt flow
+- `--airgap-ref REF[,REF...]` to choose one or more explicit application catalog bundle refs instead of the interactive picker
+- `--all-apps` to install every app published by the merged catalog set
+- `--app-ids ID[,ID...]` to install an explicit subset of apps from the merged catalog set
 - `--mission-only` to stage only the mission directory under `./out/<target>` (or `--output-dir`)
 - `--compose-only` to compose installer media to disk under `./out/<target>` (or `--output-dir`) without flashing
 - `--output-dir DIR` to keep staged mission or composed media in a specific directory for those explicit non-default modes
@@ -107,5 +109,5 @@ media composition.
 Terminology note:
 
 - the transport artifact is still named `airgap-platform` for compatibility
-- the user-facing concept is now an application catalog bundle plus a selected
-  app set from that catalog
+- the user-facing concept is now one or more application catalogs plus a
+  selected app set from the merged effective catalog

@@ -27,6 +27,7 @@ CACHE_REUSE_ENABLED=0
 CACHE_REUSE_DECISION_MADE=0
 : "${OURBOX_CACHE_REUSE_POLICY:=ask}"
 : "${OURBOX_CACHE_CLEANUP_POLICY:=ask}"
+CONTAINER_CLI=""
 
 usage() {
   cat <<EOF
@@ -37,9 +38,9 @@ Phase-one unified host-side mission prep for OurBox targets.
 Normal operator flow:
   $0
 
-This prompts for target, OS, application catalog, applications, and removable
-media, then composes and flashes mission media. Non-flash modes are available
-only behind explicit flags.
+This prompts for target, OS, one or more application catalogs, applications,
+and removable media, then composes and flashes mission media. Non-flash modes
+are available only behind explicit flags.
 
 Options:
   --target TARGET             Preselect the target type for the UI
@@ -48,15 +49,16 @@ Options:
                               non-interactive resolution when --os-ref is not set
                               (default: stable)
   --os-ref REF                Exact OS artifact ref to pull instead of catalog/channel resolution
-  --airgap-channel CHANNEL    Preferred application catalog lane for interactive
+  --airgap-channel IDS        Preferred application catalog ids for interactive
                               selection or non-interactive resolution after OS
-                              selection (default: baked catalog from the selected OS)
-  --airgap-ref REF            Exact application catalog bundle ref to pull
-                              instead of using the baked bundle
-  --all-apps                  Install all applications from the selected catalog
-                              bundle without prompting
-  --app-ids ID[,ID...]        Install an explicit comma-separated application id
-                              subset from the selected catalog without prompting
+                              selection (comma-separated)
+  --airgap-ref REFS           Exact application catalog bundle refs to pull
+                              instead of selecting from the official catalog list
+                              (comma-separated)
+  --all-apps                  Install all applications from the merged selected
+                              application catalogs without prompting
+  --app-ids ID[,ID...]        Install an explicit comma-separated merged
+                              application id subset without prompting
   --output-dir DIR            Keep staged mission or composed media under DIR
                               (used only by explicit non-default modes)
   --mission-only              Stage the mission directory only; do not compose or flash media
@@ -257,17 +259,22 @@ with open(sys.argv[1], "r", encoding="utf-8") as handle:
 
 official = adapter["official"]
 os_channel = sys.argv[2]
-airgap_channel = sys.argv[3]
 
 os_tags = official["os_channel_tags"]
 if os_channel not in os_tags:
     raise SystemExit(f"unsupported woodbox os channel: {os_channel}")
 
-airgap_tags = official["airgap_channel_tags"]
-if airgap_channel and airgap_channel not in airgap_tags:
-    raise SystemExit(f"unsupported woodbox airgap channel: {airgap_channel}")
-
 installer_tags = official["installer_channel_tags"]
+catalog_sources = official.get("application_catalog_sources")
+if not isinstance(catalog_sources, list) or not catalog_sources:
+    raise SystemExit("adapter must declare official.application_catalog_sources")
+for source in catalog_sources:
+    if not str(source.get("catalog_id", "")).strip():
+        raise SystemExit("application_catalog_sources entries must declare catalog_id")
+    if not str(source.get("catalog_name", "")).strip():
+        raise SystemExit("application_catalog_sources entries must declare catalog_name")
+    if not str(source.get("artifact_ref", "")).strip():
+        raise SystemExit("application_catalog_sources entries must declare artifact_ref")
 
 values = [
     official["os_repo"],
@@ -278,12 +285,6 @@ values = [
     os_tags["exp-labs"],
     adapter["expected_os_artifact_type"],
     adapter["expected_airgap_arch"],
-    official["airgap_repo"],
-    official["airgap_catalog_tag"],
-    airgap_tags["stable"],
-    airgap_tags["beta"],
-    airgap_tags["nightly"],
-    airgap_tags["exp-labs"],
     official["installer_repo"],
     installer_tags["stable"],
     installer_tags["beta"],
@@ -292,12 +293,13 @@ values = [
     str(adapter.get("minimum_media_size_bytes", "")),
     adapter.get("output_kind", ""),
     json.dumps(adapter.get("runtime_prompts_kept", [])),
+    json.dumps(catalog_sources),
 ]
 print("\n".join(values))
 PY
 )"
 mapfile -t adapter_fields <<<"${adapter_dump}"
-[[ "${#adapter_fields[@]}" -eq 22 ]] || die "failed to load vendored woodbox adapter metadata"
+[[ "${#adapter_fields[@]}" -eq 17 ]] || die "failed to load vendored woodbox adapter metadata"
 OS_REPO="${adapter_fields[0]}"
 OS_CATALOG_TAG="${adapter_fields[1]}"
 OS_CHANNEL_TAG_STABLE="${adapter_fields[2]}"
@@ -306,20 +308,15 @@ OS_CHANNEL_TAG_NIGHTLY="${adapter_fields[4]}"
 OS_CHANNEL_TAG_EXP_LABS="${adapter_fields[5]}"
 EXPECTED_OS_ARTIFACT_TYPE="${adapter_fields[6]}"
 EXPECTED_AIRGAP_ARCH="${adapter_fields[7]}"
-AIRGAP_REPO="${adapter_fields[8]}"
-AIRGAP_CATALOG_TAG="${adapter_fields[9]}"
-AIRGAP_CHANNEL_TAG_STABLE="${adapter_fields[10]}"
-AIRGAP_CHANNEL_TAG_BETA="${adapter_fields[11]}"
-AIRGAP_CHANNEL_TAG_NIGHTLY="${adapter_fields[12]}"
-AIRGAP_CHANNEL_TAG_EXP_LABS="${adapter_fields[13]}"
-INSTALLER_REPO="${adapter_fields[14]}"
-INSTALLER_CHANNEL_TAG_STABLE="${adapter_fields[15]}"
-INSTALLER_CHANNEL_TAG_BETA="${adapter_fields[16]}"
-INSTALLER_CHANNEL_TAG_NIGHTLY="${adapter_fields[17]}"
-INSTALLER_CHANNEL_TAG_EXP_LABS="${adapter_fields[18]}"
-MINIMUM_MEDIA_SIZE_BYTES="${adapter_fields[19]}"
-OUTPUT_KIND="${adapter_fields[20]}"
-ADAPTER_RUNTIME_PROMPTS_JSON="${adapter_fields[21]}"
+INSTALLER_REPO="${adapter_fields[8]}"
+INSTALLER_CHANNEL_TAG_STABLE="${adapter_fields[9]}"
+INSTALLER_CHANNEL_TAG_BETA="${adapter_fields[10]}"
+INSTALLER_CHANNEL_TAG_NIGHTLY="${adapter_fields[11]}"
+INSTALLER_CHANNEL_TAG_EXP_LABS="${adapter_fields[12]}"
+MINIMUM_MEDIA_SIZE_BYTES="${adapter_fields[13]}"
+OUTPUT_KIND="${adapter_fields[14]}"
+ADAPTER_RUNTIME_PROMPTS_JSON="${adapter_fields[15]}"
+APPLICATION_CATALOG_SOURCES_JSON="${adapter_fields[16]}"
 
 case "${OURBOX_CACHE_REUSE_POLICY}" in
   ask|always|never) ;;
@@ -1493,6 +1490,286 @@ determine_airgap_ref() {
   resolve_default_airgap_ref "${required_contract_digest}"
 }
 
+SELECTED_APPLICATION_CATALOG_SOURCES_JSON="[]"
+SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY=""
+
+application_catalog_source_display_from_json() {
+  local sources_json="$1"
+  python3 - <<'PY' "${sources_json}"
+import json
+import sys
+
+sources = json.loads(sys.argv[1])
+if not isinstance(sources, list) or not sources:
+    raise SystemExit(1)
+
+labels = []
+for source in sources:
+    name = str(source.get("catalog_name", "")).strip()
+    catalog_id = str(source.get("catalog_id", "")).strip()
+    ref = str(source.get("artifact_ref", "")).strip()
+    if name and catalog_id:
+        labels.append(f"{name} ({catalog_id})")
+    elif name:
+        labels.append(name)
+    elif catalog_id:
+        labels.append(catalog_id)
+    else:
+        labels.append(ref or "unknown")
+
+print(", ".join(labels))
+PY
+}
+
+list_application_catalog_source_entries() {
+  python3 - <<'PY' "${APPLICATION_CATALOG_SOURCES_JSON}"
+import json
+import sys
+
+sources = json.loads(sys.argv[1])
+if not isinstance(sources, list) or not sources:
+    raise SystemExit("application catalog sources must be a non-empty list")
+
+for source in sources:
+    print("\t".join(
+        [
+            str(source.get("catalog_id", "")).strip(),
+            str(source.get("catalog_name", "")).strip(),
+            str(source.get("description", "")).strip(),
+            str(source.get("artifact_ref", "")).strip(),
+            "1" if bool(source.get("default_selected", False)) else "0",
+        ]
+    ))
+PY
+}
+
+render_application_catalog_source_entry() {
+  local display_number="$1"
+  local entry="$2"
+  local catalog_id=""
+  local catalog_name=""
+  local description=""
+  local artifact_ref=""
+  local default_selected=""
+
+  IFS=$'\t' read -r catalog_id catalog_name description artifact_ref default_selected <<<"${entry}"
+  if [[ "${default_selected}" == "1" ]]; then
+    printf "  %d) %-18s %-28s [default]\n" "${display_number}" "${catalog_id}" "${catalog_name}"
+  else
+    printf "  %d) %-18s %-28s\n" "${display_number}" "${catalog_id}" "${catalog_name}"
+  fi
+  [[ -n "${description}" ]] && printf "      %s\n" "${description}"
+  printf "      %s\n" "${artifact_ref}"
+}
+
+resolve_default_application_catalog_sources_json() {
+  python3 - <<'PY' "${APPLICATION_CATALOG_SOURCES_JSON}"
+import json
+import sys
+
+sources = json.loads(sys.argv[1])
+defaults = [source for source in sources if bool(source.get("default_selected", False))]
+if not defaults:
+    defaults = [sources[0]]
+print(json.dumps(defaults))
+PY
+}
+
+resolve_application_catalog_sources_from_ids() {
+  local requested_ids="$1"
+  python3 - <<'PY' "${APPLICATION_CATALOG_SOURCES_JSON}" "${requested_ids}"
+import json
+import sys
+
+sources = json.loads(sys.argv[1])
+requested = [item.strip() for item in sys.argv[2].split(",") if item.strip()]
+if not requested:
+    raise SystemExit("no application catalog ids provided")
+
+by_id = {}
+for source in sources:
+    catalog_id = str(source.get("catalog_id", "")).strip()
+    if not catalog_id:
+        raise SystemExit("application catalog source missing catalog_id")
+    by_id[catalog_id] = source
+
+selected = []
+seen = set()
+for catalog_id in requested:
+    if catalog_id in seen:
+        raise SystemExit(f"duplicate application catalog id: {catalog_id}")
+    if catalog_id not in by_id:
+        raise SystemExit(f"unknown application catalog id: {catalog_id}")
+    selected.append(by_id[catalog_id])
+    seen.add(catalog_id)
+
+print(json.dumps(selected))
+PY
+}
+
+resolve_application_catalog_sources_from_numbers() {
+  local raw_selection="$1"
+  python3 - <<'PY' "${APPLICATION_CATALOG_SOURCES_JSON}" "${raw_selection}"
+import json
+import sys
+
+sources = json.loads(sys.argv[1])
+numbers = [item.strip() for item in sys.argv[2].split(",") if item.strip()]
+if not numbers:
+    raise SystemExit("no application catalog numbers selected")
+
+selected = []
+seen = set()
+for raw_number in numbers:
+    if not raw_number.isdigit():
+        raise SystemExit(f"invalid application catalog number: {raw_number}")
+    index = int(raw_number)
+    if index < 1 or index > len(sources):
+        raise SystemExit(f"application catalog number out of range: {raw_number}")
+    source = sources[index - 1]
+    catalog_id = str(source.get("catalog_id", "")).strip()
+    if catalog_id in seen:
+        raise SystemExit(f"duplicate application catalog selection: {catalog_id}")
+    selected.append(source)
+    seen.add(catalog_id)
+
+print(json.dumps(selected))
+PY
+}
+
+parse_custom_application_catalog_refs_json() {
+  local refs_csv="$1"
+  python3 - <<'PY' "${refs_csv}"
+import json
+import sys
+
+refs = [item.strip() for item in sys.argv[1].split(",") if item.strip()]
+if not refs:
+    raise SystemExit("no application catalog refs provided")
+
+selected = []
+seen = set()
+for ref in refs:
+    if ref in seen:
+        raise SystemExit(f"duplicate application catalog ref: {ref}")
+    selected.append(
+        {
+            "catalog_id": "",
+            "catalog_name": "",
+            "description": "Operator-provided application catalog bundle",
+            "artifact_ref": ref,
+            "default_selected": False,
+        }
+    )
+    seen.add(ref)
+
+print(json.dumps(selected))
+PY
+}
+
+show_application_catalog_source_panel() {
+  local default_display="$1"
+
+  echo
+  echo "Host-side application catalog selection"
+  echo "Default catalogs: ${default_display}"
+  echo "Options:"
+  echo "  [ENTER] Use the default application catalog set"
+  echo "  c       Choose official application catalogs by number"
+  echo "  r       Enter custom application catalog bundle refs (comma-separated)"
+  echo "  q       Quit"
+  echo
+}
+
+choose_application_catalog_sources_interactive() {
+  local raw_selection=""
+  local -a entries=()
+
+  mapfile -t entries < <(list_application_catalog_source_entries)
+  (( ${#entries[@]} > 0 )) || die "no application catalog sources declared by the adapter"
+
+  echo
+  echo "Official application catalogs:"
+  local i=1
+  local entry=""
+  for entry in "${entries[@]}"; do
+    render_application_catalog_source_entry "${i}" "${entry}"
+    i=$((i + 1))
+  done
+  echo
+  read -r -p "Enter catalog numbers separated by commas (or ENTER to cancel): " raw_selection
+  [[ -n "${raw_selection}" ]] || return 1
+
+  SELECTED_APPLICATION_CATALOG_SOURCES_JSON="$(resolve_application_catalog_sources_from_numbers "${raw_selection}")" || return 1
+  SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY="$(application_catalog_source_display_from_json "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}")"
+}
+
+interactive_select_application_catalog_sources() {
+  local choice=""
+  local default_sources_json=""
+  local default_display=""
+
+  default_sources_json="$(resolve_default_application_catalog_sources_json)"
+  default_display="$(application_catalog_source_display_from_json "${default_sources_json}")"
+
+  while [[ -z "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}" || "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}" == "[]" ]]; do
+    show_application_catalog_source_panel "${default_display}"
+    read -r -p "Choice: " choice
+
+    case "${choice}" in
+      "")
+        SELECTED_APPLICATION_CATALOG_SOURCES_JSON="${default_sources_json}"
+        SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY="${default_display}"
+        ;;
+      c|C)
+        choose_application_catalog_sources_interactive || true
+        ;;
+      r|R)
+        read -r -p "Enter full OCI refs separated by commas: " choice
+        [[ -n "${choice}" ]] || {
+          log "Application catalog refs cannot be empty."
+          continue
+        }
+        SELECTED_APPLICATION_CATALOG_SOURCES_JSON="$(parse_custom_application_catalog_refs_json "${choice}")" || true
+        if [[ -n "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}" && "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}" != "[]" ]]; then
+          SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY="$(application_catalog_source_display_from_json "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}")"
+        fi
+        ;;
+      q|Q)
+        die "Mission compose aborted by user"
+        ;;
+      *)
+        log "Unknown option."
+        ;;
+    esac
+  done
+}
+
+determine_application_catalog_sources() {
+  SELECTED_APPLICATION_CATALOG_SOURCES_JSON="[]"
+  SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY=""
+
+  if [[ -n "${AIRGAP_REF}" ]]; then
+    SELECTED_APPLICATION_CATALOG_SOURCES_JSON="$(parse_custom_application_catalog_refs_json "${AIRGAP_REF}")"
+    SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY="$(application_catalog_source_display_from_json "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}")"
+    return 0
+  fi
+
+  if [[ -n "${AIRGAP_CHANNEL}" ]]; then
+    SELECTED_APPLICATION_CATALOG_SOURCES_JSON="$(resolve_application_catalog_sources_from_ids "${AIRGAP_CHANNEL}")"
+    SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY="$(application_catalog_source_display_from_json "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}")"
+    return 0
+  fi
+
+  if interactive_selection_enabled; then
+    interactive_select_application_catalog_sources
+    return 0
+  fi
+
+  SELECTED_APPLICATION_CATALOG_SOURCES_JSON="$(resolve_default_application_catalog_sources_json)"
+  SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY="$(application_catalog_source_display_from_json "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}")"
+}
+
 APPLICATION_CATALOG_PRESENT=0
 APPLICATION_CATALOG_FILE=""
 APPLICATION_CATALOG_ID=""
@@ -1505,8 +1782,13 @@ SELECTED_APPLICATION_IDS_JSON="[]"
 SELECTED_APPLICATION_IDS_DISPLAY=""
 
 load_application_catalog_metadata() {
+  local catalog_file="${1:-${APPLICATION_CATALOG_FILE:-}}"
+
   APPLICATION_CATALOG_PRESENT=0
-  APPLICATION_CATALOG_FILE="${AIRGAP_EXTRACT_DIR}/platform/catalog.json"
+  if [[ -z "${catalog_file}" && -n "${AIRGAP_EXTRACT_DIR:-}" ]]; then
+    catalog_file="${AIRGAP_EXTRACT_DIR}/platform/catalog.json"
+  fi
+  APPLICATION_CATALOG_FILE="${catalog_file}"
   [[ -f "${APPLICATION_CATALOG_FILE}" ]] || return 0
 
   local catalog_dump=""
@@ -1577,14 +1859,41 @@ PY
 
 application_ids_display_from_json() {
   local app_ids_json="$1"
-  python3 - <<'PY' "${app_ids_json}"
+  python3 - <<'PY' "${APPLICATION_CATALOG_FILE}" "${app_ids_json}"
 import json
 import sys
 
-app_ids = json.loads(sys.argv[1])
+catalog_path = sys.argv[1]
+app_ids = json.loads(sys.argv[2])
 if not isinstance(app_ids, list) or not app_ids:
     raise SystemExit(1)
-print(", ".join(str(app_id) for app_id in app_ids))
+
+catalog = {}
+try:
+    with open(catalog_path, "r", encoding="utf-8") as handle:
+        loaded = json.load(handle)
+    catalog = {
+        str(app.get("id", "")).strip(): app
+        for app in loaded.get("apps", [])
+        if str(app.get("id", "")).strip()
+    }
+except Exception:
+    catalog = {}
+
+labels = []
+for app_id in app_ids:
+    normalized = str(app_id)
+    app = catalog.get(normalized)
+    if app is None:
+        labels.append(normalized)
+        continue
+    display_name = str(app.get("display_name", normalized)).strip() or normalized
+    if display_name == normalized:
+        labels.append(normalized)
+    else:
+        labels.append(f"{display_name} ({normalized})")
+
+print(", ".join(labels))
 PY
 }
 
@@ -1650,6 +1959,7 @@ for index, app in enumerate(catalog["apps"], start=1):
     app_id = str(app["id"])
     display_name = str(app.get("display_name", app_id))
     description = str(app.get("description", "")).strip()
+    source_catalog_names = app.get("source_catalog_names") or []
     marker = "default" if app_id in default_ids else ""
     line = f"  {index}) {app_id:<16} {display_name}"
     if marker:
@@ -1657,6 +1967,8 @@ for index, app in enumerate(catalog["apps"], start=1):
     print(line)
     if description:
         print(f"      {description}")
+    if isinstance(source_catalog_names, list) and source_catalog_names:
+        print(f"      source: {', '.join(str(name) for name in source_catalog_names)}")
 PY
 }
 
@@ -1792,19 +2104,373 @@ determine_application_selection() {
   SELECTED_APPLICATION_IDS_DISPLAY="$(application_ids_display_from_json "${SELECTED_APPLICATION_IDS_JSON}")"
 }
 
+json_array_to_csv() {
+  local json_value="$1"
+  python3 - <<'PY' "${json_value}"
+import json
+import sys
+
+values = json.loads(sys.argv[1])
+if not isinstance(values, list):
+    raise SystemExit("expected a JSON array")
+print(",".join(str(value) for value in values))
+PY
+}
+
+pick_container_cli() {
+  local candidate=""
+  for candidate in docker nerdctl podman; do
+    if command -v "${candidate}" >/dev/null 2>&1; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+ensure_container_cli() {
+  if [[ -n "${CONTAINER_CLI}" ]]; then
+    return 0
+  fi
+  CONTAINER_CLI="$(pick_container_cli || true)"
+  [[ -n "${CONTAINER_CLI}" ]] || die "composing selected application bundles requires docker, nerdctl, or podman on the host"
+  log "Using container CLI for selected application images: ${CONTAINER_CLI}"
+}
+
+image_tar_name() {
+  local ref="$1"
+  local base=""
+
+  base="$(echo "${ref}" | sed 's|/|_|g; s|:|_|g')"
+  printf '%s.tar\n' "${base}"
+}
+
+pull_and_save_image_tar() {
+  local image_ref="$1"
+  local tar_path="$2"
+  local cli_base=""
+
+  ensure_container_cli
+  cli_base="$(basename "${CONTAINER_CLI%% *}")"
+
+  case "${cli_base}" in
+    docker|nerdctl)
+      ${CONTAINER_CLI} pull --platform="linux/${EXPECTED_AIRGAP_ARCH}" "${image_ref}"
+      if [[ "${cli_base}" == "nerdctl" ]]; then
+        ${CONTAINER_CLI} save --platform="linux/${EXPECTED_AIRGAP_ARCH}" -o "${tar_path}" "${image_ref}"
+      else
+        ${CONTAINER_CLI} save -o "${tar_path}" "${image_ref}"
+      fi
+      ;;
+    podman)
+      ${CONTAINER_CLI} pull --arch="${EXPECTED_AIRGAP_ARCH}" --os=linux "${image_ref}"
+      ${CONTAINER_CLI} save -o "${tar_path}" "${image_ref}"
+      ;;
+    *)
+      die "unsupported container CLI: ${CONTAINER_CLI}"
+      ;;
+  esac
+
+  [[ -s "${tar_path}" ]] || die "image save failed for ${image_ref}"
+}
+
+extract_selected_application_catalog_source_entries() {
+  python3 - <<'PY' "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}"
+import json
+import sys
+
+sources = json.loads(sys.argv[1])
+if not isinstance(sources, list) or not sources:
+    raise SystemExit("selected application catalog sources must be a non-empty list")
+
+for source in sources:
+    print("\t".join(
+        [
+            str(source.get("catalog_id", "")).strip(),
+            str(source.get("catalog_name", "")).strip(),
+            str(source.get("artifact_ref", "")).strip(),
+        ]
+    ))
+PY
+}
+
+prepare_merged_application_catalog() {
+  local selection_mode="$1"
+  local selected_ids_json="${2:-[]}"
+  local selected_ids_csv=""
+  local source_records_tsv="${TMP_ROOT}/application-catalog-source-records.tsv"
+  local source_records_json="${TMP_ROOT}/application-catalog-source-records.json"
+  local extracted_root="${TMP_ROOT}/application-catalog-sources"
+  local merge_root="${TMP_ROOT}/merged-application-catalog"
+  local requested_catalog_id=""
+  local requested_catalog_name=""
+  local requested_artifact_ref=""
+  local catalog_cache_dir=""
+  local extracted_dir=""
+  local bundle_tarball=""
+  local bundle_sha=""
+  local pinned_ref=""
+  local pinned_digest=""
+  local catalog_dump=""
+  local -a catalog_fields=()
+  local index=0
+
+  rm -rf "${extracted_root}" "${merge_root}"
+  mkdir -p "${extracted_root}"
+  : > "${source_records_tsv}"
+
+  while IFS=$'\t' read -r requested_catalog_id requested_catalog_name requested_artifact_ref; do
+    [[ -n "${requested_artifact_ref}" ]] || die "selected application catalog source is missing artifact_ref"
+    cache_pull_oci_artifact "${requested_artifact_ref}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir
+    pinned_digest="${OURBOX_CACHE_LAST_DIGEST}"
+    pinned_ref="${OURBOX_CACHE_LAST_PINNED_REF}"
+
+    bundle_tarball="$(find_pulled_file "${catalog_cache_dir}" "application-catalog-bundle.tar.gz")"
+    [[ -f "${bundle_tarball}" ]] || die "cached application catalog bundle missing application-catalog-bundle.tar.gz: ${catalog_cache_dir}"
+    bundle_sha="${bundle_tarball}.sha256"
+    if [[ -f "${bundle_sha}" ]]; then
+      local expected_sha=""
+      local actual_sha=""
+      expected_sha="$(awk 'NF>=1 {print $1; exit}' "${bundle_sha}")"
+      expected_sha="${expected_sha,,}"
+      [[ "${expected_sha}" =~ ^[0-9a-f]{64}$ ]] || die "invalid sha256 in ${bundle_sha}"
+      actual_sha="$(sha256_file "${bundle_tarball}")"
+      [[ "${expected_sha}" == "${actual_sha}" ]] || die "application catalog bundle sha mismatch for ${pinned_ref}"
+    fi
+
+    index=$((index + 1))
+    extracted_dir="${extracted_root}/source-${index}"
+    mkdir -p "${extracted_dir}"
+    tar -xzf "${bundle_tarball}" -C "${extracted_dir}"
+    [[ -f "${extracted_dir}/catalog.json" ]] || die "application catalog bundle missing catalog.json: ${pinned_ref}"
+    [[ -f "${extracted_dir}/images.lock.json" ]] || die "application catalog bundle missing images.lock.json: ${pinned_ref}"
+    [[ -f "${extracted_dir}/manifest.env" ]] || die "application catalog bundle missing manifest.env: ${pinned_ref}"
+    [[ -f "${extracted_dir}/profile.env" ]] || die "application catalog bundle missing profile.env: ${pinned_ref}"
+
+    catalog_dump="$(
+      python3 - <<'PY' "${extracted_dir}/catalog.json"
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    catalog = json.load(handle)
+
+if catalog.get("schema") != 1:
+    raise SystemExit("application catalog must declare schema=1")
+if catalog.get("kind") != "ourbox-application-catalog":
+    raise SystemExit("application catalog must declare kind=ourbox-application-catalog")
+
+catalog_id = str(catalog.get("catalog_id", "")).strip()
+catalog_name = str(catalog.get("catalog_name", "")).strip()
+if not catalog_id or not catalog_name:
+    raise SystemExit("application catalog must declare catalog_id and catalog_name")
+
+print(catalog_id)
+print(catalog_name)
+PY
+    )" || die "failed to parse application catalog bundle metadata: ${pinned_ref}"
+    mapfile -t catalog_fields <<<"${catalog_dump}"
+    [[ "${#catalog_fields[@]}" -eq 2 ]] || die "application catalog bundle parse produced an unexpected field set: ${pinned_ref}"
+
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "${catalog_fields[0]}" \
+      "${catalog_fields[1]}" \
+      "${pinned_ref}" \
+      "${pinned_digest}" \
+      "${extracted_dir}/catalog.json" \
+      "${extracted_dir}/images.lock.json" >> "${source_records_tsv}"
+  done < <(extract_selected_application_catalog_source_entries)
+
+  python3 - <<'PY' "${source_records_tsv}" "${source_records_json}"
+import json
+import sys
+from pathlib import Path
+
+records = []
+for raw_line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+    if not raw_line.strip():
+        continue
+    catalog_id, catalog_name, artifact_ref, artifact_digest, catalog_path, images_lock_path = raw_line.split("\t")
+    records.append(
+        {
+            "catalog_id": catalog_id,
+            "catalog_name": catalog_name,
+            "artifact_ref": artifact_ref,
+            "artifact_digest": artifact_digest,
+            "catalog_path": catalog_path,
+            "images_lock_path": images_lock_path,
+        }
+    )
+
+if not records:
+    raise SystemExit("no application catalog sources were staged")
+
+Path(sys.argv[2]).write_text(json.dumps(records, indent=2) + "\n", encoding="utf-8")
+PY
+
+  selected_ids_csv=""
+  if [[ "${selection_mode}" == "custom" ]]; then
+    selected_ids_csv="$(json_array_to_csv "${selected_ids_json}")"
+  fi
+
+  mkdir -p "${merge_root}"
+  MERGED_APPLICATION_CATALOG_FILE="${merge_root}/catalog.json"
+  MERGED_SELECTED_APPLICATIONS_FILE="${merge_root}/selected-apps.json"
+  MERGED_IMAGES_LOCK_FILE="${merge_root}/images.lock.json"
+  MERGED_APPLICATION_SUMMARY_FILE="${merge_root}/summary.json"
+
+  python3 "${ROOT}/tools/merge-application-catalogs.py" \
+    --sources-json "${source_records_json}" \
+    --selection-mode "${selection_mode}" \
+    --selected-app-ids "${selected_ids_csv}" \
+    --out-catalog "${MERGED_APPLICATION_CATALOG_FILE}" \
+    --out-selected-apps "${MERGED_SELECTED_APPLICATIONS_FILE}" \
+    --out-images-lock "${MERGED_IMAGES_LOCK_FILE}" \
+    --out-summary "${MERGED_APPLICATION_SUMMARY_FILE}"
+
+  APPLICATION_CATALOG_FILE="${MERGED_APPLICATION_CATALOG_FILE}"
+  load_application_catalog_metadata
+}
+
+log_application_catalog_merge_summary() {
+  [[ -f "${MERGED_APPLICATION_SUMMARY_FILE}" ]] || return 0
+  python3 - <<'PY' "${MERGED_APPLICATION_SUMMARY_FILE}"
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    summary = json.load(handle)
+
+source_catalogs = summary.get("source_catalogs") or []
+selected_ids = summary.get("selected_app_ids") or []
+conflicts = summary.get("conflicts") or []
+
+print(f"Merged application catalogs: {len(source_catalogs)} source(s), {len(selected_ids)} selected app(s)")
+for conflict in conflicts:
+    app_uid = str(conflict.get("app_uid", "")).strip()
+    kept = str(conflict.get("kept_catalog_id", "")).strip()
+    dropped = str(conflict.get("dropped_catalog_id", "")).strip()
+    policy = str(conflict.get("policy", "")).strip()
+    if app_uid and kept and dropped:
+        print(f"Conflict resolved for {app_uid}: kept {kept}, dropped {dropped} ({policy or 'first-selected-source-wins'})")
+PY
+}
+
+synthesize_selected_application_bundle() {
+  local extracted_payload_root="${TMP_ROOT}/os-payload-extract"
+  local base_airgap_dir="${extracted_payload_root}/airgap"
+  local synthetic_root="${TMP_ROOT}/selected-application-bundle"
+  local synthetic_images_dir="${synthetic_root}/platform/images"
+  local image_dump=""
+  local image_name=""
+  local image_ref=""
+  local target_tar=""
+  local baked_tar=""
+  local synthetic_sha=""
+  local merged_images_lock_sha=""
+  local bundle_ref=""
+  local bundle_version=""
+
+  rm -rf "${extracted_payload_root}" "${synthetic_root}"
+  mkdir -p "${extracted_payload_root}" "${synthetic_images_dir}"
+
+  tar -xzf "${OS_PAYLOAD}" -C "${extracted_payload_root}" airgap
+  [[ -d "${base_airgap_dir}" ]] || die "selected OS payload did not contain a baked airgap directory"
+  [[ -f "${base_airgap_dir}/manifest.env" ]] || die "selected OS payload baked airgap bundle is missing manifest.env"
+  [[ -d "${base_airgap_dir}/platform/images" ]] || die "selected OS payload baked airgap bundle is missing platform/images"
+
+  cp -a "${base_airgap_dir}/." "${synthetic_root}/"
+  rm -rf "${synthetic_images_dir}"
+  mkdir -p "${synthetic_images_dir}"
+
+  cp -f "${MERGED_APPLICATION_CATALOG_FILE}" "${synthetic_root}/platform/catalog.json"
+  cp -f "${MERGED_SELECTED_APPLICATIONS_FILE}" "${synthetic_root}/platform/selected-apps.json"
+  cp -f "${MERGED_IMAGES_LOCK_FILE}" "${synthetic_root}/platform/images.lock.json"
+
+  image_dump="$(
+    python3 - <<'PY' "${MERGED_IMAGES_LOCK_FILE}"
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    images_lock = json.load(handle)
+
+images = images_lock.get("images")
+if not isinstance(images, list) or not images:
+    raise SystemExit("merged images lock must declare a non-empty images list")
+
+for image in images:
+    name = str(image.get("name", "")).strip()
+    ref = str(image.get("ref", "")).strip()
+    if not name or not ref:
+        raise SystemExit("merged images lock contains an invalid image entry")
+    print(f"{name}\t{ref}")
+PY
+  )" || die "failed to parse merged images lock: ${MERGED_IMAGES_LOCK_FILE}"
+
+  while IFS=$'\t' read -r image_name image_ref; do
+    [[ -n "${image_name}" && -n "${image_ref}" ]] || continue
+    target_tar="${synthetic_images_dir}/$(image_tar_name "${image_ref}")"
+    baked_tar="${base_airgap_dir}/platform/images/$(image_tar_name "${image_ref}")"
+
+    if [[ -f "${baked_tar}" ]]; then
+      cp -f "${baked_tar}" "${target_tar}"
+      continue
+    fi
+
+    log "Pull + save selected application image ${image_ref}"
+    pull_and_save_image_tar "${image_ref}" "${target_tar}"
+  done <<<"${image_dump}"
+
+  merged_images_lock_sha="$(sha256_file "${MERGED_IMAGES_LOCK_FILE}")"
+  bundle_version="host-selected-${APPLICATION_CATALOG_ID}"
+  bundle_ref="host-composed://application-catalog/${APPLICATION_CATALOG_ID}"
+
+  cat > "${synthetic_root}/manifest.env" <<EOF_MANIFEST
+OURBOX_AIRGAP_PLATFORM_SCHEMA=1
+OURBOX_AIRGAP_PLATFORM_KIND=airgap-platform
+OURBOX_AIRGAP_PLATFORM_SOURCE=https://github.com/techofourown/sw-ourbox-installer
+OURBOX_AIRGAP_PLATFORM_REVISION=${COMPOSER_REVISION}
+OURBOX_AIRGAP_PLATFORM_VERSION=${bundle_version}
+OURBOX_AIRGAP_PLATFORM_CREATED=${COMPOSED_AT}
+OURBOX_PLATFORM_CONTRACT_REF=${PLATFORM_CONTRACT_SOURCE}
+OURBOX_PLATFORM_CONTRACT_DIGEST=${PLATFORM_CONTRACT_DIGEST}
+AIRGAP_PLATFORM_ARCH=${EXPECTED_AIRGAP_ARCH}
+K3S_VERSION=${BAKED_AIRGAP_K3S_VERSION}
+OURBOX_PLATFORM_PROFILE=${BAKED_AIRGAP_PROFILE}
+OURBOX_PLATFORM_IMAGES_LOCK_PATH=platform/images.lock.json
+OURBOX_PLATFORM_IMAGES_LOCK_SHA256=${merged_images_lock_sha}
+EOF_MANIFEST
+
+  tar -C "${synthetic_root}" -czf "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz" k3s platform manifest.env
+  synthetic_sha="$(sha256_file "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz")"
+  printf '%s  %s\n' "${synthetic_sha}" "airgap-platform.tar.gz" > "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz.sha256"
+  cp -f "${synthetic_root}/manifest.env" "${AIRGAP_STAGE_DIR}/manifest.env"
+  printf '%s\n' "${bundle_ref}" > "${AIRGAP_STAGE_DIR}/artifact.ref"
+
+  SELECTED_AIRGAP_PINNED_REF="${bundle_ref}"
+  SELECTED_AIRGAP_DIGEST="sha256:${synthetic_sha}"
+  SELECTED_AIRGAP_SELECTION_MODE="host-selected"
+  SELECTED_AIRGAP_SELECTION_SOURCE="application-catalogs"
+  SELECTED_AIRGAP_RELEASE_CHANNEL=""
+  SELECTED_AIRGAP_SOURCE="https://github.com/techofourown/sw-ourbox-installer"
+  SELECTED_AIRGAP_REVISION="${COMPOSER_REVISION}"
+  SELECTED_AIRGAP_VERSION="${bundle_version}"
+  SELECTED_AIRGAP_CREATED="${COMPOSED_AT}"
+  SELECTED_AIRGAP_PLATFORM_CONTRACT_REF="${PLATFORM_CONTRACT_SOURCE}"
+  SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST="${PLATFORM_CONTRACT_DIGEST}"
+  SELECTED_AIRGAP_ARCH="${EXPECTED_AIRGAP_ARCH}"
+  SELECTED_AIRGAP_K3S_VERSION="${BAKED_AIRGAP_K3S_VERSION}"
+  SELECTED_AIRGAP_PROFILE="${BAKED_AIRGAP_PROFILE}"
+  SELECTED_AIRGAP_IMAGES_LOCK_PATH="platform/images.lock.json"
+  SELECTED_AIRGAP_IMAGES_LOCK_SHA256="${merged_images_lock_sha}"
+}
+
 initial_cache_refs=()
 if [[ -n "${OS_REF}" ]]; then
   initial_cache_refs+=("${OS_REF}")
 else
   initial_cache_refs+=("${OS_REPO}:${OS_CATALOG_TAG}" "${OS_REPO}:$(os_channel_tag_for "${OS_CHANNEL}")")
-fi
-if [[ -n "${AIRGAP_REF}" ]]; then
-  initial_cache_refs+=("${AIRGAP_REF}")
-else
-  initial_cache_refs+=("${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}")
-  if [[ -n "${AIRGAP_CHANNEL}" ]]; then
-    initial_cache_refs+=("${AIRGAP_REPO}:$(airgap_channel_tag_for "${AIRGAP_CHANNEL}")")
-  fi
 fi
 maybe_confirm_cache_reuse "the requested selection inputs" "${initial_cache_refs[@]}"
 
@@ -1925,14 +2591,20 @@ is_pinned_ref "${BAKED_AIRGAP_REF}" || die "selected OS payload is missing a pin
 is_sha256_digest "${BAKED_AIRGAP_DIGEST}" || die "selected OS payload is missing a baked airgap digest"
 [[ "${BAKED_AIRGAP_ARCH}" == "${EXPECTED_AIRGAP_ARCH}" ]] || die "selected OS payload baked airgap arch mismatch: ${BAKED_AIRGAP_ARCH}"
 
-SELECTED_AIRGAP_REF=""
-determine_airgap_ref "${PLATFORM_CONTRACT_DIGEST}"
+determine_application_catalog_sources
 SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL="$(selected_installer_release_channel)"
 SELECTED_INSTALLER_SUBSTRATE_REF="${INSTALLER_REPO}:$(installer_channel_tag_for "${SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL}")"
-maybe_confirm_cache_reuse "the selected mission artifacts" "${SELECTED_OS_REF}" "${SELECTED_AIRGAP_REF}" "${SELECTED_INSTALLER_SUBSTRATE_REF}"
-cache_pull_oci_artifact "${SELECTED_AIRGAP_REF}" "${CACHE_REUSE_ENABLED}" AIRGAP_CACHE_DIR
-SELECTED_AIRGAP_DIGEST="${OURBOX_CACHE_LAST_DIGEST}"
-SELECTED_AIRGAP_PINNED_REF="${OURBOX_CACHE_LAST_PINNED_REF}"
+
+selected_catalog_cache_refs=()
+while IFS=$'\t' read -r _requested_catalog_id _requested_catalog_name requested_artifact_ref; do
+  [[ -n "${requested_artifact_ref}" ]] && selected_catalog_cache_refs+=("${requested_artifact_ref}")
+done < <(extract_selected_application_catalog_source_entries)
+
+maybe_confirm_cache_reuse "the selected mission artifacts" "${SELECTED_OS_REF}" "${selected_catalog_cache_refs[@]}" "${SELECTED_INSTALLER_SUBSTRATE_REF}"
+prepare_merged_application_catalog "catalog-defaults" "[]"
+determine_application_selection
+prepare_merged_application_catalog "${SELECTED_APPLICATION_SELECTION_MODE}" "${SELECTED_APPLICATION_IDS_JSON}"
+log_application_catalog_merge_summary
 
 cache_pull_oci_artifact "${SELECTED_INSTALLER_SUBSTRATE_REF}" "${CACHE_REUSE_ENABLED}" INSTALLER_SUBSTRATE_CACHE_DIR
 SELECTED_INSTALLER_SUBSTRATE_DIGEST="${OURBOX_CACHE_LAST_DIGEST}"
@@ -1940,89 +2612,6 @@ SELECTED_INSTALLER_SUBSTRATE_PINNED_REF="${OURBOX_CACHE_LAST_PINNED_REF}"
 verify_installer_substrate_cache_dir "${INSTALLER_SUBSTRATE_CACHE_DIR}"
 INSTALLER_SUBSTRATE_ISO="$(find_pulled_file "${INSTALLER_SUBSTRATE_CACHE_DIR}" "installer.iso")"
 [[ -f "${INSTALLER_SUBSTRATE_ISO}" ]] || die "cached installer substrate missing installer.iso: ${INSTALLER_SUBSTRATE_CACHE_DIR}"
-
-AIRGAP_TARBALL="$(find_pulled_file "${AIRGAP_CACHE_DIR}" "airgap-platform.tar.gz")"
-[[ -f "${AIRGAP_TARBALL}" ]] || die "cached airgap artifact missing airgap-platform.tar.gz: ${AIRGAP_CACHE_DIR}"
-
-AIRGAP_EXTRACT_DIR="${TMP_ROOT}/airgap-extract"
-mkdir -p "${AIRGAP_EXTRACT_DIR}"
-tar -xzf "${AIRGAP_TARBALL}" -C "${AIRGAP_EXTRACT_DIR}"
-
-AIRGAP_MANIFEST="${AIRGAP_EXTRACT_DIR}/manifest.env"
-[[ -f "${AIRGAP_MANIFEST}" ]] || die "airgap bundle missing manifest.env"
-[[ -x "${AIRGAP_EXTRACT_DIR}/k3s/k3s" ]] || die "airgap bundle missing k3s binary"
-[[ -f "${AIRGAP_EXTRACT_DIR}/k3s/k3s-airgap-images-${EXPECTED_AIRGAP_ARCH}.tar" ]] || die "airgap bundle missing k3s airgap images tar for ${EXPECTED_AIRGAP_ARCH}"
-[[ -f "${AIRGAP_EXTRACT_DIR}/platform/images.lock.json" ]] || die "airgap bundle missing platform/images.lock.json"
-[[ -f "${AIRGAP_EXTRACT_DIR}/platform/profile.env" ]] || die "airgap bundle missing platform/profile.env"
-[[ -d "${AIRGAP_EXTRACT_DIR}/platform/images" ]] || die "airgap bundle missing platform/images directory"
-find "${AIRGAP_EXTRACT_DIR}/platform/images" -maxdepth 1 -type f -name '*.tar' -print -quit | grep -q . \
-  || die "airgap bundle missing platform image tar payloads"
-
-airgap_manifest_dump="$(
-  python3 "${VENDORED_METADATA_PARSER}" "${AIRGAP_MANIFEST}" \
-    --allow OURBOX_AIRGAP_PLATFORM_SCHEMA \
-    --allow OURBOX_AIRGAP_PLATFORM_KIND \
-    --allow OURBOX_AIRGAP_PLATFORM_SOURCE \
-    --allow OURBOX_AIRGAP_PLATFORM_REVISION \
-    --allow OURBOX_AIRGAP_PLATFORM_VERSION \
-    --allow OURBOX_AIRGAP_PLATFORM_CREATED \
-    --allow OURBOX_PLATFORM_CONTRACT_REF \
-    --allow OURBOX_PLATFORM_CONTRACT_DIGEST \
-    --allow AIRGAP_PLATFORM_ARCH \
-    --allow K3S_VERSION \
-    --allow OURBOX_PLATFORM_PROFILE \
-    --allow OURBOX_PLATFORM_IMAGES_LOCK_PATH \
-    --allow OURBOX_PLATFORM_IMAGES_LOCK_SHA256 \
-    --require OURBOX_AIRGAP_PLATFORM_SOURCE \
-    --require OURBOX_AIRGAP_PLATFORM_REVISION \
-    --require OURBOX_AIRGAP_PLATFORM_VERSION \
-    --require OURBOX_AIRGAP_PLATFORM_CREATED \
-    --require OURBOX_PLATFORM_CONTRACT_DIGEST \
-    --require AIRGAP_PLATFORM_ARCH \
-    --require K3S_VERSION \
-    --require OURBOX_PLATFORM_PROFILE \
-    --require OURBOX_PLATFORM_IMAGES_LOCK_PATH \
-    --require OURBOX_PLATFORM_IMAGES_LOCK_SHA256 \
-    --print OURBOX_AIRGAP_PLATFORM_SOURCE \
-    --print OURBOX_AIRGAP_PLATFORM_REVISION \
-    --print OURBOX_AIRGAP_PLATFORM_VERSION \
-    --print OURBOX_AIRGAP_PLATFORM_CREATED \
-    --print OURBOX_PLATFORM_CONTRACT_REF \
-    --print OURBOX_PLATFORM_CONTRACT_DIGEST \
-    --print AIRGAP_PLATFORM_ARCH \
-    --print K3S_VERSION \
-    --print OURBOX_PLATFORM_PROFILE \
-    --print OURBOX_PLATFORM_IMAGES_LOCK_PATH \
-    --print OURBOX_PLATFORM_IMAGES_LOCK_SHA256
-)"
-mapfile -t airgap_manifest_fields <<<"${airgap_manifest_dump}"
-[[ "${#airgap_manifest_fields[@]}" -eq 11 ]] || die "failed to parse ${AIRGAP_MANIFEST}"
-
-SELECTED_AIRGAP_SOURCE="${airgap_manifest_fields[0]}"
-SELECTED_AIRGAP_REVISION="${airgap_manifest_fields[1]}"
-SELECTED_AIRGAP_VERSION="${airgap_manifest_fields[2]}"
-SELECTED_AIRGAP_CREATED="${airgap_manifest_fields[3]}"
-SELECTED_AIRGAP_PLATFORM_CONTRACT_REF="${airgap_manifest_fields[4]}"
-SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST="${airgap_manifest_fields[5]}"
-SELECTED_AIRGAP_ARCH="${airgap_manifest_fields[6]}"
-SELECTED_AIRGAP_K3S_VERSION="${airgap_manifest_fields[7]}"
-SELECTED_AIRGAP_PROFILE="${airgap_manifest_fields[8]}"
-SELECTED_AIRGAP_IMAGES_LOCK_PATH="${airgap_manifest_fields[9]}"
-SELECTED_AIRGAP_IMAGES_LOCK_SHA256="${airgap_manifest_fields[10]}"
-
-[[ -n "${SELECTED_AIRGAP_SOURCE}" ]] || die "selected airgap bundle is missing OURBOX_AIRGAP_PLATFORM_SOURCE"
-[[ -n "${SELECTED_AIRGAP_REVISION}" ]] || die "selected airgap bundle is missing OURBOX_AIRGAP_PLATFORM_REVISION"
-[[ -n "${SELECTED_AIRGAP_VERSION}" ]] || die "selected airgap bundle is missing OURBOX_AIRGAP_PLATFORM_VERSION"
-is_sha256_digest "${SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST}" || die "selected airgap bundle has invalid platform contract digest"
-[[ "${SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST}" == "${PLATFORM_CONTRACT_DIGEST}" ]] || die "selected airgap bundle contract digest mismatch: expected ${PLATFORM_CONTRACT_DIGEST}, got ${SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST}"
-[[ "${SELECTED_AIRGAP_ARCH}" == "${EXPECTED_AIRGAP_ARCH}" ]] || die "selected airgap bundle arch mismatch: expected ${EXPECTED_AIRGAP_ARCH}, got ${SELECTED_AIRGAP_ARCH}"
-[[ -n "${SELECTED_AIRGAP_K3S_VERSION}" ]] || die "selected airgap bundle is missing K3S_VERSION"
-[[ -n "${SELECTED_AIRGAP_PROFILE}" ]] || die "selected airgap bundle is missing OURBOX_PLATFORM_PROFILE"
-[[ -n "${SELECTED_AIRGAP_IMAGES_LOCK_PATH}" ]] || die "selected airgap bundle is missing OURBOX_PLATFORM_IMAGES_LOCK_PATH"
-[[ "${SELECTED_AIRGAP_IMAGES_LOCK_SHA256}" =~ ^[0-9a-f]{64}$ ]] || die "selected airgap bundle has invalid OURBOX_PLATFORM_IMAGES_LOCK_SHA256"
-
-load_application_catalog_metadata
-determine_application_selection
 
 COMPOSER_REVISION="$(git -C "${ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
 if [[ -n "$(git -C "${ROOT}" status --short 2>/dev/null || true)" ]]; then
@@ -2043,32 +2632,10 @@ cp -f "${OS_PAYLOAD_SHA_FILE}" "${OS_STAGE_DIR}/os-payload.tar.gz.sha256"
 cp -f "${OS_META_ENV}" "${OS_STAGE_DIR}/os.meta.env"
 printf '%s\n' "${SELECTED_OS_PINNED_REF}" > "${OS_STAGE_DIR}/artifact.ref"
 
-cp -f "${AIRGAP_TARBALL}" "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz"
-printf '%s  %s\n' "$(sha256_file "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz")" "airgap-platform.tar.gz" > "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz.sha256"
-cp -f "${AIRGAP_MANIFEST}" "${AIRGAP_STAGE_DIR}/manifest.env"
-printf '%s\n' "${SELECTED_AIRGAP_PINNED_REF}" > "${AIRGAP_STAGE_DIR}/artifact.ref"
+synthesize_selected_application_bundle
 if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
-  cp -f "${APPLICATION_CATALOG_FILE}" "${AIRGAP_STAGE_DIR}/catalog.json"
-  export SELECTED_APPLICATION_IDS_JSON APPLICATION_CATALOG_ID APPLICATION_CATALOG_NAME SELECTED_APPLICATION_SELECTION_MODE
-  python3 - <<'PY' "${AIRGAP_STAGE_DIR}/selected-apps.json"
-import json
-import os
-import sys
-
-selected_path = sys.argv[1]
-selected_ids = json.loads(os.environ["SELECTED_APPLICATION_IDS_JSON"])
-payload = {
-    "schema": 1,
-    "kind": "ourbox-selected-applications",
-    "catalog_id": os.environ["APPLICATION_CATALOG_ID"],
-    "catalog_name": os.environ["APPLICATION_CATALOG_NAME"],
-    "selection_mode": os.environ["SELECTED_APPLICATION_SELECTION_MODE"],
-    "selected_app_ids": selected_ids,
-}
-with open(selected_path, "w", encoding="utf-8") as handle:
-    json.dump(payload, handle, indent=2, sort_keys=True)
-    handle.write("\n")
-PY
+  cp -f "${MERGED_APPLICATION_CATALOG_FILE}" "${AIRGAP_STAGE_DIR}/catalog.json"
+  cp -f "${MERGED_SELECTED_APPLICATIONS_FILE}" "${AIRGAP_STAGE_DIR}/selected-apps.json"
 fi
 
 export MISSION_DIR COMPOSE_ID COMPOSED_AT TARGET COMPOSER_REVISION ADAPTER_SOURCE_REPO ADAPTER_SOURCE_REVISION
@@ -2081,7 +2648,7 @@ export SELECTED_AIRGAP_SOURCE SELECTED_AIRGAP_REVISION SELECTED_AIRGAP_VERSION S
 export SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST SELECTED_AIRGAP_ARCH SELECTED_AIRGAP_PROFILE SELECTED_AIRGAP_K3S_VERSION
 export SELECTED_AIRGAP_IMAGES_LOCK_SHA256 MISSION_ONLY BAKED_AIRGAP_DIGEST
 export APPLICATION_CATALOG_PRESENT APPLICATION_CATALOG_ID APPLICATION_CATALOG_NAME APPLICATION_CATALOG_DESCRIPTION
-export SELECTED_APPLICATION_SELECTION_MODE SELECTED_APPLICATION_IDS_JSON
+export SELECTED_APPLICATION_SELECTION_MODE SELECTED_APPLICATION_IDS_JSON MERGED_APPLICATION_SUMMARY_FILE
 
 python3 - <<'PY'
 import hashlib
@@ -2196,6 +2763,14 @@ manifest = {
 }
 
 if os.environ.get("APPLICATION_CATALOG_PRESENT") == "1":
+    source_catalogs = []
+    summary_path = os.environ.get("MERGED_APPLICATION_SUMMARY_FILE", "")
+    if summary_path:
+        with open(summary_path, "r", encoding="utf-8") as handle:
+            summary = json.load(handle)
+        raw_sources = summary.get("source_catalogs") or []
+        if isinstance(raw_sources, list):
+            source_catalogs = raw_sources
     manifest["selected_applications"] = {
         "catalog_id": os.environ["APPLICATION_CATALOG_ID"],
         "catalog_name": os.environ["APPLICATION_CATALOG_NAME"],
@@ -2203,6 +2778,7 @@ if os.environ.get("APPLICATION_CATALOG_PRESENT") == "1":
         "selected_app_ids": json.loads(os.environ["SELECTED_APPLICATION_IDS_JSON"]),
         "catalog_relpath": application_catalog.relative_to(mission_dir).as_posix(),
         "selection_relpath": selected_apps.relative_to(mission_dir).as_posix(),
+        "source_catalogs": source_catalogs,
     }
 
 with (mission_dir / "mission-manifest.json").open("w", encoding="utf-8") as handle:
@@ -2217,7 +2793,8 @@ bash "${VENDORED_ADAPTER_ROOT}/validate-media.sh" \
   --os-meta-env "${OS_STAGE_DIR}/os.meta.env"
 
 log "Selected OS artifact: ${SELECTED_OS_PINNED_REF} (${SELECTED_OS_SELECTION_SOURCE})"
-log "Selected application catalog bundle: ${SELECTED_AIRGAP_PINNED_REF} (${SELECTED_AIRGAP_SELECTION_SOURCE})"
+log "Selected application catalogs: ${SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY}"
+log "Synthesized application bundle: ${SELECTED_AIRGAP_PINNED_REF} (${SELECTED_AIRGAP_SELECTION_SOURCE})"
 if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
   log "Selected applications: ${SELECTED_APPLICATION_IDS_DISPLAY} (${SELECTED_APPLICATION_SELECTION_MODE})"
 fi

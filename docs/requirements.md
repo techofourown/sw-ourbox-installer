@@ -63,13 +63,15 @@ implemented in phase one; some are mandatory direction even if follow-on phases
 
 - The operator must be able to choose both:
   - an OS artifact
-  - an application catalog bundle (currently transported as `airgap-platform`)
+  - one or more application catalogs (currently transported as
+    `airgap-platform` bundles)
   while provisioning installer media on the host.
-- When the selected catalog advertises catalog metadata, the operator must also
-  be able to choose which applications from that catalog are installed:
-  - the catalog default app set
-  - all apps from that catalog
-  - a custom app subset from that catalog
+- When the selected catalogs advertise catalog metadata, the operator must also
+  be able to choose which applications from the merged effective catalog are
+  installed:
+  - the merged default app set
+  - all apps from the merged catalog
+  - a custom app subset from the merged catalog
 - Host-side selection must happen before the target boots.
 - The host-side selection surface must support:
   - official catalog selection
@@ -99,25 +101,34 @@ implemented in phase one; some are mandatory direction even if follow-on phases
 
 ### 5. Host-side application catalog selection remains bounded by the OS contract
 
-- If the operator selects an application catalog bundle that differs from the
-  OS payload's baked bundle, the selected bundle must match the selected OS
-  payload's `OURBOX_PLATFORM_CONTRACT_DIGEST`.
+- If the operator selects one or more application catalogs that differ from the
+  OS payload's baked bundle, every selected catalog bundle must match the
+  selected OS payload's `OURBOX_PLATFORM_CONTRACT_DIGEST`.
 - Architecture must also match the target slot.
 - The host must fail closed on contract mismatch, arch mismatch, or malformed
   bundle shape.
+- The host must merge the selected catalogs into one effective catalog before
+  application selection.
+- The app-selection flow should reuse the same business logic regardless of
+  whether the effective catalog came from one source catalog or many.
 - If the operator chooses a custom app set, the selected app ids must be a
-  subset of the chosen catalog's declared applications.
+  subset of the merged catalog's declared applications.
+- Catalog merge and deconfliction must be driven by stable app identity rather
+  than display name alone.
 
 ### 6. Mission media is a mission pack
 
 - Composed media is not a generic warehouse of all targets and all bundles.
 - A mission pack is for one selected target/profile/artifact tuple, with one
-  selected application catalog bundle.
+  synthesized application bundle derived from one or more selected application
+  catalogs.
 - A mission pack is the selected mission for one stick, not a universal payload
   warehouse.
 - Mission media must carry:
   - the staged OS bytes
-  - the staged application-catalog bundle bytes
+  - the staged synthesized application-bundle bytes
+  - the selected application catalog identities needed to explain where the
+    app set came from
   - the selected-application metadata needed to reproduce the chosen app set
   - a mission manifest
   - the metadata actually required to compose and install those staged bytes
@@ -144,7 +155,7 @@ implemented in phase one; some are mandatory direction even if follow-on phases
   - compose tool identity
   - adapter identity
   - selected OS identity
-  - selected application catalog identity
+  - selected application catalog identities
   - selected application-set identity
   - platform-contract identity
   - staged file paths and integrity hashes
