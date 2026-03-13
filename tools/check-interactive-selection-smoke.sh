@@ -75,7 +75,7 @@ mkdir -p "${OS_CATALOG_DIR}" "${AIRGAP_CATALOG_DIR}"
 {
   echo $'channel\ttag\tcreated\tversion\tplatform_contract_digest\tpinned_ref'
   printf 'x86-beta\tx86-beta\t2026-03-13T12:00:00Z\tv1.1.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "${OS_BETA_PINNED}"
-  printf 'x86-stable\tx86-stable\t2026-03-12T12:00:00Z\tv1.0.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "${OS_STABLE_PINNED}"
+  printf 'x86-stable\tx86-stable\t2026-03-12T12:00:00\tv1.0.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "${OS_STABLE_PINNED}"
   printf 'x86-nightly\tx86-nightly\t2026-03-11T12:00:00Z\tv0.11.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 111)"
   printf 'x86-exp-labs\tx86-exp-labs\t2026-03-10T12:00:00Z\tv0.10.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 110)"
   printf 'x86-stable\tx86-stable-older-1\t2026-03-09T12:00:00Z\tv0.9.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 109)"
@@ -91,7 +91,7 @@ mkdir -p "${OS_CATALOG_DIR}" "${AIRGAP_CATALOG_DIR}"
 {
   echo $'channel\ttag\tcreated\tversion\tarch\tplatform_contract_digest\tpinned_ref'
   printf 'beta\tbeta-amd64\t2026-03-13T12:00:00Z\tv1.1.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "${AIRGAP_BETA_PINNED}"
-  printf 'stable\tstable-amd64\t2026-03-12T12:00:00Z\tv1.0.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "${AIRGAP_STABLE_PINNED}"
+  printf 'stable\tstable-amd64\t2026-03-12T12:00:00\tv1.0.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "${AIRGAP_STABLE_PINNED}"
   printf 'nightly\tnightly-amd64\t2026-03-11T12:00:00Z\tv0.11.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 211)"
   printf 'exp-labs\texp-labs-amd64\t2026-03-10T12:00:00Z\tv0.10.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 210)"
   printf 'stable\tstable-amd64-older-1\t2026-03-09T12:00:00Z\tv0.9.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 209)"
@@ -131,6 +131,15 @@ determine_os_ref <<< $'\n'
 [[ "${SELECTED_OS_REF}" == "${OS_STABLE_PINNED}" ]] || die "expected ENTER to accept the default OS selection"
 [[ "${SELECTED_OS_SELECTION_SOURCE}" == "catalog" ]] || die "expected default OS selection source to be catalog"
 [[ "${SELECTED_OS_RELEASE_CHANNEL}" == "stable" ]] || die "expected default OS release channel to normalize to stable"
+
+OS_CHANNEL="stable"
+SELECTED_OS_REF=""
+SELECTED_OS_SELECTION_SOURCE=""
+SELECTED_OS_RELEASE_CHANNEL=""
+determine_os_ref <<< $'l\n\n\n'
+[[ "${SELECTED_OS_REF}" == "${OS_STABLE_PINNED}" ]] || die "expected pager cancel followed by ENTER to keep the default OS selection"
+[[ "${SELECTED_OS_SELECTION_SOURCE}" == "catalog" ]] || die "expected pager cancel fallback OS selection source to remain catalog"
+[[ "${SELECTED_OS_RELEASE_CHANNEL}" == "stable" ]] || die "expected pager cancel fallback OS release channel to remain stable"
 
 OS_CHANNEL="stable"
 SELECTED_OS_REF=""
