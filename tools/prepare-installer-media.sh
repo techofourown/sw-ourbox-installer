@@ -1607,7 +1607,7 @@ print(json.dumps(selected))
 PY
 }
 
-resolve_application_catalog_sources_from_numbers() {
+resolve_application_catalog_ids_from_numbers() {
   local raw_selection="$1"
   python3 - <<'PY' "${APPLICATION_CATALOG_SOURCES_JSON}" "${raw_selection}"
 import json
@@ -1618,7 +1618,7 @@ numbers = [item.strip() for item in sys.argv[2].split(",") if item.strip()]
 if not numbers:
     raise SystemExit("no application catalog numbers selected")
 
-selected = []
+selected_ids = []
 seen = set()
 for raw_number in numbers:
     if not raw_number.isdigit():
@@ -1626,15 +1626,24 @@ for raw_number in numbers:
     index = int(raw_number)
     if index < 1 or index > len(sources):
         raise SystemExit(f"application catalog number out of range: {raw_number}")
-    source = sources[index - 1]
-    catalog_id = str(source.get("catalog_id", "")).strip()
+    catalog_id = str(sources[index - 1].get("catalog_id", "")).strip()
+    if not catalog_id:
+        raise SystemExit(f"application catalog number {raw_number} does not map to a valid catalog_id")
     if catalog_id in seen:
         raise SystemExit(f"duplicate application catalog selection: {catalog_id}")
-    selected.append(source)
+    selected_ids.append(catalog_id)
     seen.add(catalog_id)
 
-print(json.dumps(selected))
+print(",".join(selected_ids))
 PY
+}
+
+resolve_application_catalog_sources_from_numbers() {
+  local raw_selection="$1"
+  local selected_ids=""
+
+  selected_ids="$(resolve_application_catalog_ids_from_numbers "${raw_selection}")" || return 1
+  resolve_application_catalog_sources_from_ids "${selected_ids}"
 }
 
 parse_custom_application_catalog_refs_json() {
@@ -2006,7 +2015,7 @@ for index, app in enumerate(catalog["apps"], start=1):
 PY
 }
 
-resolve_custom_application_ids_from_numbers() {
+resolve_application_ids_csv_from_numbers() {
   local raw_selection="$1"
   python3 - <<'PY' "${APPLICATION_CATALOG_FILE}" "${raw_selection}"
 import json
@@ -2035,8 +2044,16 @@ for raw_number in numbers:
     selected_ids.append(app_id)
     seen_ids.add(app_id)
 
-print(json.dumps(selected_ids))
+print(",".join(selected_ids))
 PY
+}
+
+resolve_custom_application_ids_from_numbers() {
+  local raw_selection="$1"
+  local selected_ids_csv=""
+
+  selected_ids_csv="$(resolve_application_ids_csv_from_numbers "${raw_selection}")" || return 1
+  resolve_selected_application_ids_json "custom" "${selected_ids_csv}"
 }
 
 show_application_selection_panel() {
