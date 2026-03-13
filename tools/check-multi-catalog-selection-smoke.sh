@@ -246,8 +246,8 @@ if app_ids.count("techofourown/hello-world") != 1:
     raise SystemExit("expected merged catalog to dedupe hello-world by app_uid")
 if "techofourown/landing" not in app_ids:
     raise SystemExit("expected merged catalog to keep the unique landing app")
-if selected["selected_app_ids"] != ["techofourown/landing", "techofourown/hello-world"]:
-    raise SystemExit("expected merged default app ids to preserve deduped defaults")
+if selected["selected_app_ids"] != ["techofourown/hello-world", "techofourown/landing"]:
+    raise SystemExit("expected merged default app ids to be deterministic and deduped")
 if len(images["images"]) != 2:
     raise SystemExit("expected merged images lock to contain deduped selected images")
 PY

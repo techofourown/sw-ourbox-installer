@@ -70,6 +70,14 @@ def canonical_app_uid(source: dict, app: dict) -> str:
     return f"{source['catalog_id']}/{str(app['id']).strip()}"
 
 
+def canonical_source_key(source: dict) -> tuple[str, str, str]:
+    return (
+        str(source["catalog_id"]).strip(),
+        str(source["artifact_ref"]).strip(),
+        str(source["artifact_digest"]).strip(),
+    )
+
+
 def app_signature(app: dict, resolved_images: list[dict]) -> str:
     comparable = {
         "display_name": str(app.get("display_name", "")),
@@ -105,8 +113,7 @@ def main() -> int:
         raise SystemExit(f"{sources_path} must declare a non-empty source catalog list")
 
     merged_by_uid: dict[str, dict] = {}
-    ordered_uids: list[str] = []
-    merged_defaults: list[str] = []
+    merged_defaults: set[str] = set()
     conflict_records: list[dict] = []
 
     for source_index, source in enumerate(sources):
@@ -174,7 +181,6 @@ def main() -> int:
 
             if app_uid not in merged_by_uid:
                 merged_by_uid[app_uid] = merged_entry
-                ordered_uids.append(app_uid)
             else:
                 existing = merged_by_uid[app_uid]
                 if existing["_signature"] == signature:
@@ -195,15 +201,62 @@ def main() -> int:
                             "policy": "first-selected-source-wins",
                         }
                     )
-            if local_app_id in defaults_set and app_uid not in merged_defaults:
-                merged_defaults.append(app_uid)
+            if local_app_id in defaults_set:
+                merged_defaults.add(app_uid)
 
     if not merged_defaults:
         raise SystemExit("merged catalogs produced an empty default app set")
 
-    all_app_uids = ordered_uids
+    canonical_source_catalogs = sorted(
+        [
+            {
+                "catalog_id": str(source["catalog_id"]),
+                "catalog_name": str(source["catalog_name"]),
+                "artifact_ref": str(source["artifact_ref"]),
+                "artifact_digest": str(source["artifact_digest"]),
+            }
+            for source in sources
+        ],
+        key=canonical_source_key,
+    )
+    canonical_source_positions = {
+        canonical_source_key(source): index
+        for index, source in enumerate(canonical_source_catalogs)
+    }
+
+    all_app_uids = sorted(merged_by_uid)
+    merged_defaults_list = [app_uid for app_uid in all_app_uids if app_uid in merged_defaults]
+
+    for app_uid in all_app_uids:
+        entry = merged_by_uid[app_uid]
+        zipped_sources = list(
+            zip(
+                entry["source_catalog_ids"],
+                entry["source_catalog_names"],
+                entry["source_artifact_refs"],
+                entry["source_artifact_digests"],
+                strict=True,
+            )
+        )
+        zipped_sources.sort(
+            key=lambda item: canonical_source_positions[
+                canonical_source_key(
+                    {
+                        "catalog_id": item[0],
+                        "artifact_ref": item[2],
+                        "artifact_digest": item[3],
+                    }
+                )
+            ]
+        )
+        entry["source_catalog_ids"] = [item[0] for item in zipped_sources]
+        entry["source_catalog_names"] = [item[1] for item in zipped_sources]
+        entry["source_artifact_refs"] = [item[2] for item in zipped_sources]
+        entry["source_artifact_digests"] = [item[3] for item in zipped_sources]
+
+    conflict_records.sort(key=lambda item: (item["app_uid"], item["kept_catalog_id"], item["dropped_catalog_id"]))
     if args.selection_mode == "catalog-defaults":
-        selected_app_ids = list(merged_defaults)
+        selected_app_ids = list(merged_defaults_list)
     elif args.selection_mode == "all-apps":
         selected_app_ids = list(all_app_uids)
     else:
@@ -253,15 +306,7 @@ def main() -> int:
             rewritten_names.append(merged_name)
         app["image_names"] = rewritten_names
 
-    source_catalogs = [
-        {
-            "catalog_id": str(source["catalog_id"]),
-            "catalog_name": str(source["catalog_name"]),
-            "artifact_ref": str(source["artifact_ref"]),
-            "artifact_digest": str(source["artifact_digest"]),
-        }
-        for source in sources
-    ]
+    source_catalogs = canonical_source_catalogs
     if len(source_catalogs) == 1:
         merged_catalog_id = source_catalogs[0]["catalog_id"]
         merged_catalog_name = source_catalogs[0]["catalog_name"]
@@ -275,7 +320,7 @@ def main() -> int:
         "catalog_id": merged_catalog_id,
         "catalog_name": merged_catalog_name,
         "catalog_description": "Host-merged application catalog assembled from the selected source catalogs.",
-        "default_app_ids": merged_defaults,
+        "default_app_ids": merged_defaults_list,
         "source_catalogs": source_catalogs,
         "apps": [
             {
@@ -283,7 +328,7 @@ def main() -> int:
                 for key, value in merged_by_uid[app_uid].items()
                 if not key.startswith("_")
             }
-            for app_uid in ordered_uids
+            for app_uid in all_app_uids
         ],
     }
 
@@ -306,7 +351,7 @@ def main() -> int:
     summary = {
         "merged_catalog_id": merged_catalog_id,
         "merged_catalog_name": merged_catalog_name,
-        "default_app_ids": merged_defaults,
+        "default_app_ids": merged_defaults_list,
         "all_app_ids": all_app_uids,
         "selected_app_ids": selected_app_ids,
         "source_catalogs": source_catalogs,
