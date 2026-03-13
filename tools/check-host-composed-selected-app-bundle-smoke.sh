@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TMP_ROOT="$(mktemp -d)"
-trap 'rm -rf "${TMP_ROOT}"' EXIT
+HARNESS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+HARNESS_TMP_ROOT="$(mktemp -d)"
+ROOT="${HARNESS_ROOT}"
+TMP_ROOT="${HARNESS_TMP_ROOT}"
+trap 'rm -rf "${HARNESS_TMP_ROOT}"' EXIT
 
 OURBOX_PREPARE_INSTALLER_LIBRARY_ONLY=1
 # shellcheck disable=SC1091
 source "${ROOT}/tools/prepare-installer-media.sh"
 unset OURBOX_PREPARE_INSTALLER_LIBRARY_ONLY
-
-HARNESS_ROOT="${ROOT}"
-HARNESS_TMP_ROOT="${TMP_ROOT}"
 
 # Load the post-guard helper functions without executing the main body.
 # shellcheck disable=SC1091
