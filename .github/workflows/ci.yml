@@ -22,6 +22,7 @@ jobs:
           bash -n tools/check-cache-policy-smoke.sh
           bash -n tools/check-flash-first-policy-smoke.sh
           bash -n tools/check-interactive-selection-smoke.sh
+          bash -n tools/check-vendored-flash-helper-smoke.sh
           bash -n tools/check-vendored-woodbox-pin.sh
           bash -n tools/check-woodbox-contract-smoke.sh
           bash -n vendor/woodbox/flash-installer-media.sh
@@ -56,6 +57,9 @@ jobs:
 
       - name: Interactive selection smoke
         run: bash tools/check-interactive-selection-smoke.sh
+
+      - name: Vendored flash helper smoke
+        run: bash tools/check-vendored-flash-helper-smoke.sh
 
       - name: Published substrate selection smoke
         run: bash tools/check-adapter-repo-discovery-smoke.sh
