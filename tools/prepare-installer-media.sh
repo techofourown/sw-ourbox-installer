@@ -12,6 +12,8 @@ OS_CHANNEL="stable"
 OS_REF=""
 AIRGAP_CHANNEL=""
 AIRGAP_REF=""
+APP_IDS=""
+ALL_APPS=0
 OUTPUT_DIR=""
 MISSION_ONLY=0
 COMPOSE_ONLY=0
@@ -35,8 +37,9 @@ Phase-one unified host-side mission prep for OurBox targets.
 Normal operator flow:
   $0
 
-This prompts for target, OS, airgap, and removable media, then composes and
-flashes mission media. Non-flash modes are available only behind explicit flags.
+This prompts for target, OS, application catalog, applications, and removable
+media, then composes and flashes mission media. Non-flash modes are available
+only behind explicit flags.
 
 Options:
   --target TARGET             Preselect the target type for the UI
@@ -45,10 +48,15 @@ Options:
                               non-interactive resolution when --os-ref is not set
                               (default: stable)
   --os-ref REF                Exact OS artifact ref to pull instead of catalog/channel resolution
-  --airgap-channel CHANNEL    Preferred airgap channel for interactive selection or
-                              non-interactive resolution after OS selection
-                              (default: baked bundle from the selected OS)
-  --airgap-ref REF            Exact airgap bundle ref to pull instead of using the baked bundle
+  --airgap-channel CHANNEL    Preferred application catalog lane for interactive
+                              selection or non-interactive resolution after OS
+                              selection (default: baked catalog from the selected OS)
+  --airgap-ref REF            Exact application catalog bundle ref to pull
+                              instead of using the baked bundle
+  --all-apps                  Install all applications from the selected catalog
+                              bundle without prompting
+  --app-ids ID[,ID...]        Install an explicit comma-separated application id
+                              subset from the selected catalog without prompting
   --output-dir DIR            Keep staged mission or composed media under DIR
                               (used only by explicit non-default modes)
   --mission-only              Stage the mission directory only; do not compose or flash media
@@ -161,6 +169,15 @@ while [[ $# -gt 0 ]]; do
       AIRGAP_REF="$2"
       shift 2
       ;;
+    --all-apps)
+      ALL_APPS=1
+      shift
+      ;;
+    --app-ids)
+      [[ $# -ge 2 ]] || die "--app-ids requires a value"
+      APP_IDS="$2"
+      shift 2
+      ;;
     --output-dir)
       [[ $# -ge 2 ]] || die "--output-dir requires a value"
       OUTPUT_DIR="$2"
@@ -195,6 +212,7 @@ determine_target
 [[ "${MISSION_ONLY}" == "0" || "${COMPOSE_ONLY}" == "0" ]] || die "--mission-only cannot be combined with --compose-only"
 [[ "${MISSION_ONLY}" == "0" || -z "${FLASH_DEVICE}" ]] || die "--flash-device cannot be combined with --mission-only"
 [[ "${COMPOSE_ONLY}" == "0" || -z "${FLASH_DEVICE}" ]] || die "--flash-device cannot be combined with --compose-only"
+[[ "${ALL_APPS}" == "0" || -z "${APP_IDS}" ]] || die "--all-apps cannot be combined with --app-ids"
 if [[ -z "${OUTPUT_DIR}" && ( "${MISSION_ONLY}" == "1" || "${COMPOSE_ONLY}" == "1" ) ]]; then
   OUTPUT_DIR="$(default_output_dir_for_target "${TARGET}")"
 fi
@@ -1238,9 +1256,9 @@ resolve_airgap_channel_ref() {
         return 0
       fi
     fi
-    log "Airgap catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} had no valid pinned row for channel ${channel} and contract ${required_contract_digest}; falling back to channel tag"
+    log "Application catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} had no valid pinned row for lane ${channel} and contract ${required_contract_digest}; falling back to lane tag"
   else
-    log "Airgap catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} unavailable; falling back to channel tag"
+    log "Application catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} unavailable; falling back to lane tag"
   fi
 
   SELECTED_AIRGAP_SELECTION_MODE="host-selected"
@@ -1275,15 +1293,15 @@ show_airgap_default_choice() {
   local ref="$1"
 
   echo
-  echo "Host-side airgap selection"
+  echo "Host-side application catalog selection"
   echo "Default source : ${SELECTED_AIRGAP_SELECTION_SOURCE:-pending}"
-  echo "Default: use airgap bundle '${ref}'"
+  echo "Default: use application catalog bundle '${ref}'"
   echo "Options:"
   echo "  [ENTER] Use default"
-  echo "  c       Choose channel (prefers newest contract-matching catalog row for that lane)"
-  echo "  l       List from catalog (if available)"
+  echo "  c       Choose lane (prefers newest contract-matching catalog row for that lane)"
+  echo "  l       List published catalog bundles"
   echo "  r       Enter custom OCI ref (tag or digest)"
-  echo "  o       Override airgap repo (custom registry/fork)"
+  echo "  o       Override application catalog repo (custom registry/fork)"
   echo "  q       Quit"
   echo
 }
@@ -1293,7 +1311,7 @@ choose_airgap_channel_interactive() {
   local pick=""
   local custom_tag=""
 
-  echo "Channels:"
+  echo "Application catalog lanes:"
   echo "  1) stable (${AIRGAP_CHANNEL_TAG_STABLE}) (recommended)"
   echo "  2) beta (${AIRGAP_CHANNEL_TAG_BETA})"
   echo "  3) nightly (${AIRGAP_CHANNEL_TAG_NIGHTLY})"
@@ -1341,25 +1359,25 @@ select_airgap_ref_from_catalog_interactive() {
   local -a entries=()
 
   if ! try_cache_pull_oci_artifact "${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
-    log "Airgap catalog unavailable; skipping list."
+    log "Application catalog registry listing unavailable; skipping list."
     return 1
   fi
 
   catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
   mapfile -t entries < <(list_airgap_catalog_entries "${catalog_tsv}" "${required_contract_digest}" "${EXPECTED_AIRGAP_ARCH}")
   if [[ "${#entries[@]}" -eq 0 ]]; then
-    log "Airgap catalog pulled (${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}) but contained no matching rows for arch=${EXPECTED_AIRGAP_ARCH} contract=${required_contract_digest}."
+    log "Application catalog listing (${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}) contained no matching rows for arch=${EXPECTED_AIRGAP_ARCH} contract=${required_contract_digest}."
     return 1
   fi
 
-  paginate_catalog_entries_interactive "Airgap catalog entries (${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG})" entries render_airgap_catalog_entry chosen || return 1
+  paginate_catalog_entries_interactive "Application catalog bundles (${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG})" entries render_airgap_catalog_entry chosen || return 1
   IFS=$'\t' read -r channel tag created version contract pinned_ref <<<"${chosen}"
   AIRGAP_CHANNEL="$(normalize_release_channel "${channel}")"
   SELECTED_AIRGAP_SELECTION_MODE="host-selected"
   SELECTED_AIRGAP_SELECTION_SOURCE="catalog"
   SELECTED_AIRGAP_RELEASE_CHANNEL="${AIRGAP_CHANNEL}"
   SELECTED_AIRGAP_REF="${pinned_ref}"
-  log "Selected ${SELECTED_AIRGAP_REF} (channel=${AIRGAP_CHANNEL}, version=${version}, contract=${contract})"
+  log "Selected application catalog bundle ${SELECTED_AIRGAP_REF} (lane=${AIRGAP_CHANNEL}, version=${version}, contract=${contract})"
 }
 
 prompt_custom_airgap_ref_interactive() {
@@ -1382,7 +1400,7 @@ override_airgap_repo_interactive() {
   local next_catalog="catalog-${EXPECTED_AIRGAP_ARCH}"
   local user_catalog=""
 
-  read -r -p "Enter OCI repo (e.g., ghcr.io/org/airgap-platform): " next_repo
+  read -r -p "Enter OCI repo (e.g., ghcr.io/org/application-catalog): " next_repo
   [[ -n "${next_repo}" ]] || {
     log "Repository cannot be empty."
     return 1
@@ -1400,7 +1418,7 @@ override_airgap_repo_interactive() {
     AIRGAP_CHANNEL="stable"
   fi
 
-  log "Airgap repo override set to ${AIRGAP_REPO}"
+  log "Application catalog repo override set to ${AIRGAP_REPO}"
 }
 
 interactive_select_airgap_ref() {
@@ -1473,6 +1491,305 @@ determine_airgap_ref() {
   fi
 
   resolve_default_airgap_ref "${required_contract_digest}"
+}
+
+APPLICATION_CATALOG_PRESENT=0
+APPLICATION_CATALOG_FILE=""
+APPLICATION_CATALOG_ID=""
+APPLICATION_CATALOG_NAME=""
+APPLICATION_CATALOG_DESCRIPTION=""
+APPLICATION_DEFAULT_APP_IDS_JSON="[]"
+APPLICATION_ALL_APP_IDS_JSON="[]"
+SELECTED_APPLICATION_SELECTION_MODE=""
+SELECTED_APPLICATION_IDS_JSON="[]"
+SELECTED_APPLICATION_IDS_DISPLAY=""
+
+load_application_catalog_metadata() {
+  APPLICATION_CATALOG_PRESENT=0
+  APPLICATION_CATALOG_FILE="${AIRGAP_EXTRACT_DIR}/platform/catalog.json"
+  [[ -f "${APPLICATION_CATALOG_FILE}" ]] || return 0
+
+  local catalog_dump=""
+  local -a catalog_fields=()
+  catalog_dump="$(
+    python3 - <<'PY' "${APPLICATION_CATALOG_FILE}"
+import json
+import sys
+
+catalog_path = sys.argv[1]
+with open(catalog_path, "r", encoding="utf-8") as handle:
+    catalog = json.load(handle)
+
+if catalog.get("schema") != 1:
+    raise SystemExit(f"{catalog_path} must declare schema=1")
+if catalog.get("kind") != "ourbox-application-catalog":
+    raise SystemExit(f"{catalog_path} must declare kind=ourbox-application-catalog")
+
+catalog_id = str(catalog.get("catalog_id", "")).strip()
+catalog_name = str(catalog.get("catalog_name", "")).strip()
+catalog_description = str(catalog.get("catalog_description", "")).strip()
+apps = catalog.get("apps")
+default_app_ids = catalog.get("default_app_ids")
+
+if not catalog_id:
+    raise SystemExit(f"{catalog_path} must declare catalog_id")
+if not catalog_name:
+    raise SystemExit(f"{catalog_path} must declare catalog_name")
+if not isinstance(apps, list) or not apps:
+    raise SystemExit(f"{catalog_path} must declare a non-empty apps list")
+if not isinstance(default_app_ids, list) or not default_app_ids:
+    raise SystemExit(f"{catalog_path} must declare non-empty default_app_ids")
+
+all_app_ids = []
+seen_ids = set()
+for app in apps:
+    app_id = str(app.get("id", "")).strip()
+    if not app_id:
+        raise SystemExit(f"{catalog_path} contains an app without an id")
+    if app_id in seen_ids:
+        raise SystemExit(f"{catalog_path} contains duplicate app id {app_id}")
+    all_app_ids.append(app_id)
+    seen_ids.add(app_id)
+
+unknown_defaults = sorted(set(default_app_ids) - seen_ids)
+if unknown_defaults:
+    raise SystemExit(
+        f"{catalog_path} declares unknown default_app_ids: {', '.join(unknown_defaults)}"
+    )
+
+print(catalog_id)
+print(catalog_name)
+print(catalog_description)
+print(json.dumps(default_app_ids))
+print(json.dumps(all_app_ids))
+PY
+  )" || die "failed to parse application catalog metadata: ${APPLICATION_CATALOG_FILE}"
+  mapfile -t catalog_fields <<<"${catalog_dump}"
+  [[ "${#catalog_fields[@]}" -eq 5 ]] || die "application catalog parse produced an unexpected field set: ${APPLICATION_CATALOG_FILE}"
+
+  APPLICATION_CATALOG_PRESENT=1
+  APPLICATION_CATALOG_ID="${catalog_fields[0]}"
+  APPLICATION_CATALOG_NAME="${catalog_fields[1]}"
+  APPLICATION_CATALOG_DESCRIPTION="${catalog_fields[2]}"
+  APPLICATION_DEFAULT_APP_IDS_JSON="${catalog_fields[3]}"
+  APPLICATION_ALL_APP_IDS_JSON="${catalog_fields[4]}"
+}
+
+application_ids_display_from_json() {
+  local app_ids_json="$1"
+  python3 - <<'PY' "${app_ids_json}"
+import json
+import sys
+
+app_ids = json.loads(sys.argv[1])
+if not isinstance(app_ids, list) or not app_ids:
+    raise SystemExit(1)
+print(", ".join(str(app_id) for app_id in app_ids))
+PY
+}
+
+resolve_selected_application_ids_json() {
+  local selection_mode="$1"
+  local selection_arg="${2:-}"
+
+  python3 - <<'PY' "${APPLICATION_CATALOG_FILE}" "${APPLICATION_DEFAULT_APP_IDS_JSON}" "${APPLICATION_ALL_APP_IDS_JSON}" "${selection_mode}" "${selection_arg}"
+import json
+import sys
+
+catalog_path, default_ids_json, all_ids_json, selection_mode, selection_arg = sys.argv[1:]
+with open(catalog_path, "r", encoding="utf-8") as handle:
+    catalog = json.load(handle)
+
+app_by_id = {
+    str(app["id"]): app
+    for app in catalog["apps"]
+}
+default_ids = json.loads(default_ids_json)
+all_ids = json.loads(all_ids_json)
+
+def require_nonempty(ids):
+    if not ids:
+        raise SystemExit("selected application set must not be empty")
+    return ids
+
+if selection_mode == "catalog-defaults":
+    print(json.dumps(require_nonempty(default_ids)))
+    raise SystemExit(0)
+if selection_mode == "all-apps":
+    print(json.dumps(require_nonempty(all_ids)))
+    raise SystemExit(0)
+if selection_mode != "custom":
+    raise SystemExit(f"unsupported application selection_mode {selection_mode!r}")
+
+raw_ids = [item.strip() for item in selection_arg.split(",") if item.strip()]
+selected_ids = []
+seen_ids = set()
+for app_id in raw_ids:
+    if app_id in seen_ids:
+        raise SystemExit(f"duplicate application id in selection: {app_id}")
+    if app_id not in app_by_id:
+        raise SystemExit(f"unknown application id in selection: {app_id}")
+    selected_ids.append(app_id)
+    seen_ids.add(app_id)
+
+print(json.dumps(require_nonempty(selected_ids)))
+PY
+}
+
+render_application_catalog_entries() {
+  python3 - <<'PY' "${APPLICATION_CATALOG_FILE}" "${APPLICATION_DEFAULT_APP_IDS_JSON}"
+import json
+import sys
+
+catalog_path = sys.argv[1]
+default_ids = set(json.loads(sys.argv[2]))
+with open(catalog_path, "r", encoding="utf-8") as handle:
+    catalog = json.load(handle)
+
+for index, app in enumerate(catalog["apps"], start=1):
+    app_id = str(app["id"])
+    display_name = str(app.get("display_name", app_id))
+    description = str(app.get("description", "")).strip()
+    marker = "default" if app_id in default_ids else ""
+    line = f"  {index}) {app_id:<16} {display_name}"
+    if marker:
+        line += f" [{marker}]"
+    print(line)
+    if description:
+        print(f"      {description}")
+PY
+}
+
+resolve_custom_application_ids_from_numbers() {
+  local raw_selection="$1"
+  python3 - <<'PY' "${APPLICATION_CATALOG_FILE}" "${raw_selection}"
+import json
+import sys
+
+catalog_path, raw_selection = sys.argv[1:]
+with open(catalog_path, "r", encoding="utf-8") as handle:
+    catalog = json.load(handle)
+
+apps = catalog["apps"]
+numbers = [item.strip() for item in raw_selection.split(",") if item.strip()]
+if not numbers:
+    raise SystemExit("no application numbers selected")
+
+selected_ids = []
+seen_ids = set()
+for raw_number in numbers:
+    if not raw_number.isdigit():
+        raise SystemExit(f"invalid application number: {raw_number}")
+    index = int(raw_number)
+    if index < 1 or index > len(apps):
+        raise SystemExit(f"application number out of range: {raw_number}")
+    app_id = str(apps[index - 1]["id"])
+    if app_id in seen_ids:
+        raise SystemExit(f"duplicate application selection: {app_id}")
+    selected_ids.append(app_id)
+    seen_ids.add(app_id)
+
+print(json.dumps(selected_ids))
+PY
+}
+
+show_application_selection_panel() {
+  local default_display="$1"
+
+  echo
+  echo "Host-side application selection"
+  echo "Catalog       : ${APPLICATION_CATALOG_NAME} (${APPLICATION_CATALOG_ID})"
+  if [[ -n "${APPLICATION_CATALOG_DESCRIPTION}" ]]; then
+    echo "Description   : ${APPLICATION_CATALOG_DESCRIPTION}"
+  fi
+  echo "Default apps  : ${default_display}"
+  echo "Options:"
+  echo "  [ENTER] Use the catalog default app set"
+  echo "  a       Install all apps from this catalog"
+  echo "  c       Choose a custom app set from this catalog"
+  echo "  q       Quit"
+  echo
+}
+
+choose_custom_applications_interactive() {
+  local raw_selection=""
+
+  echo
+  echo "Applications in ${APPLICATION_CATALOG_NAME}:"
+  render_application_catalog_entries
+  echo
+  read -r -p "Enter app numbers separated by commas (or ENTER to cancel): " raw_selection
+  [[ -n "${raw_selection}" ]] || return 1
+
+  SELECTED_APPLICATION_IDS_JSON="$(resolve_custom_application_ids_from_numbers "${raw_selection}")" || return 1
+  SELECTED_APPLICATION_SELECTION_MODE="custom"
+  SELECTED_APPLICATION_IDS_DISPLAY="$(application_ids_display_from_json "${SELECTED_APPLICATION_IDS_JSON}")"
+}
+
+interactive_select_applications() {
+  local choice=""
+  local default_display=""
+
+  default_display="$(application_ids_display_from_json "${APPLICATION_DEFAULT_APP_IDS_JSON}")"
+  while [[ -z "${SELECTED_APPLICATION_SELECTION_MODE}" ]]; do
+    show_application_selection_panel "${default_display}"
+    read -r -p "Choice: " choice
+
+    case "${choice}" in
+      "")
+        SELECTED_APPLICATION_SELECTION_MODE="catalog-defaults"
+        SELECTED_APPLICATION_IDS_JSON="${APPLICATION_DEFAULT_APP_IDS_JSON}"
+        SELECTED_APPLICATION_IDS_DISPLAY="${default_display}"
+        ;;
+      a|A)
+        SELECTED_APPLICATION_SELECTION_MODE="all-apps"
+        SELECTED_APPLICATION_IDS_JSON="${APPLICATION_ALL_APP_IDS_JSON}"
+        SELECTED_APPLICATION_IDS_DISPLAY="$(application_ids_display_from_json "${SELECTED_APPLICATION_IDS_JSON}")"
+        ;;
+      c|C)
+        choose_custom_applications_interactive || true
+        ;;
+      q|Q)
+        die "Mission compose aborted by user"
+        ;;
+      *)
+        log "Unknown option."
+        ;;
+    esac
+  done
+}
+
+determine_application_selection() {
+  if [[ "${APPLICATION_CATALOG_PRESENT}" != "1" ]]; then
+    [[ "${ALL_APPS}" == "0" && -z "${APP_IDS}" ]] || die "the selected application catalog bundle does not advertise catalog metadata, so explicit application selection is unavailable"
+    SELECTED_APPLICATION_SELECTION_MODE=""
+    SELECTED_APPLICATION_IDS_JSON="[]"
+    SELECTED_APPLICATION_IDS_DISPLAY=""
+    return 0
+  fi
+
+  if [[ "${ALL_APPS}" == "1" ]]; then
+    SELECTED_APPLICATION_SELECTION_MODE="all-apps"
+    SELECTED_APPLICATION_IDS_JSON="${APPLICATION_ALL_APP_IDS_JSON}"
+    SELECTED_APPLICATION_IDS_DISPLAY="$(application_ids_display_from_json "${SELECTED_APPLICATION_IDS_JSON}")"
+    return 0
+  fi
+
+  if [[ -n "${APP_IDS}" ]]; then
+    SELECTED_APPLICATION_SELECTION_MODE="custom"
+    SELECTED_APPLICATION_IDS_JSON="$(resolve_selected_application_ids_json "custom" "${APP_IDS}")"
+    SELECTED_APPLICATION_IDS_DISPLAY="$(application_ids_display_from_json "${SELECTED_APPLICATION_IDS_JSON}")"
+    return 0
+  fi
+
+  if interactive_selection_enabled; then
+    interactive_select_applications
+    return 0
+  fi
+
+  SELECTED_APPLICATION_SELECTION_MODE="catalog-defaults"
+  SELECTED_APPLICATION_IDS_JSON="${APPLICATION_DEFAULT_APP_IDS_JSON}"
+  SELECTED_APPLICATION_IDS_DISPLAY="$(application_ids_display_from_json "${SELECTED_APPLICATION_IDS_JSON}")"
 }
 
 initial_cache_refs=()
@@ -1704,6 +2021,9 @@ is_sha256_digest "${SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST}" || die "selected 
 [[ -n "${SELECTED_AIRGAP_IMAGES_LOCK_PATH}" ]] || die "selected airgap bundle is missing OURBOX_PLATFORM_IMAGES_LOCK_PATH"
 [[ "${SELECTED_AIRGAP_IMAGES_LOCK_SHA256}" =~ ^[0-9a-f]{64}$ ]] || die "selected airgap bundle has invalid OURBOX_PLATFORM_IMAGES_LOCK_SHA256"
 
+load_application_catalog_metadata
+determine_application_selection
+
 COMPOSER_REVISION="$(git -C "${ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
 if [[ -n "$(git -C "${ROOT}" status --short 2>/dev/null || true)" ]]; then
   COMPOSER_REVISION="${COMPOSER_REVISION}-dirty"
@@ -1727,6 +2047,29 @@ cp -f "${AIRGAP_TARBALL}" "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz"
 printf '%s  %s\n' "$(sha256_file "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz")" "airgap-platform.tar.gz" > "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz.sha256"
 cp -f "${AIRGAP_MANIFEST}" "${AIRGAP_STAGE_DIR}/manifest.env"
 printf '%s\n' "${SELECTED_AIRGAP_PINNED_REF}" > "${AIRGAP_STAGE_DIR}/artifact.ref"
+if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
+  cp -f "${APPLICATION_CATALOG_FILE}" "${AIRGAP_STAGE_DIR}/catalog.json"
+  export SELECTED_APPLICATION_IDS_JSON APPLICATION_CATALOG_ID APPLICATION_CATALOG_NAME SELECTED_APPLICATION_SELECTION_MODE
+  python3 - <<'PY' "${AIRGAP_STAGE_DIR}/selected-apps.json"
+import json
+import os
+import sys
+
+selected_path = sys.argv[1]
+selected_ids = json.loads(os.environ["SELECTED_APPLICATION_IDS_JSON"])
+payload = {
+    "schema": 1,
+    "kind": "ourbox-selected-applications",
+    "catalog_id": os.environ["APPLICATION_CATALOG_ID"],
+    "catalog_name": os.environ["APPLICATION_CATALOG_NAME"],
+    "selection_mode": os.environ["SELECTED_APPLICATION_SELECTION_MODE"],
+    "selected_app_ids": selected_ids,
+}
+with open(selected_path, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle, indent=2, sort_keys=True)
+    handle.write("\n")
+PY
+fi
 
 export MISSION_DIR COMPOSE_ID COMPOSED_AT TARGET COMPOSER_REVISION ADAPTER_SOURCE_REPO ADAPTER_SOURCE_REVISION
 export VENDORED_ADAPTER_ROOT ADAPTER_RUNTIME_PROMPTS_JSON MINIMUM_MEDIA_SIZE_BYTES OUTPUT_KIND
@@ -1737,6 +2080,8 @@ export SELECTED_AIRGAP_PINNED_REF SELECTED_AIRGAP_DIGEST SELECTED_AIRGAP_SELECTI
 export SELECTED_AIRGAP_SOURCE SELECTED_AIRGAP_REVISION SELECTED_AIRGAP_VERSION SELECTED_AIRGAP_CREATED SELECTED_AIRGAP_PLATFORM_CONTRACT_REF
 export SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST SELECTED_AIRGAP_ARCH SELECTED_AIRGAP_PROFILE SELECTED_AIRGAP_K3S_VERSION
 export SELECTED_AIRGAP_IMAGES_LOCK_SHA256 MISSION_ONLY BAKED_AIRGAP_DIGEST
+export APPLICATION_CATALOG_PRESENT APPLICATION_CATALOG_ID APPLICATION_CATALOG_NAME APPLICATION_CATALOG_DESCRIPTION
+export SELECTED_APPLICATION_SELECTION_MODE SELECTED_APPLICATION_IDS_JSON
 
 python3 - <<'PY'
 import hashlib
@@ -1749,6 +2094,8 @@ os_payload = mission_dir / "artifacts" / "os" / "os-payload.tar.gz"
 os_meta = mission_dir / "artifacts" / "os" / "os.meta.env"
 airgap_payload = mission_dir / "artifacts" / "airgap" / "airgap-platform.tar.gz"
 airgap_manifest = mission_dir / "artifacts" / "airgap" / "manifest.env"
+application_catalog = mission_dir / "artifacts" / "airgap" / "catalog.json"
+selected_apps = mission_dir / "artifacts" / "airgap" / "selected-apps.json"
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -1797,7 +2144,7 @@ manifest = {
         "prompt_identity_on_target": True,
     },
     "mission_media": {
-      "compose_strategy": "woodbox-fat-iso-with-host-selected-os-and-airgap",
+      "compose_strategy": "woodbox-fat-iso-with-host-selected-os-application-catalog-and-app-selection",
       "mission_only": os.environ["MISSION_ONLY"] == "1",
     },
     "substrate": {
@@ -1848,6 +2195,16 @@ manifest = {
     "staged_files": staged_files,
 }
 
+if os.environ.get("APPLICATION_CATALOG_PRESENT") == "1":
+    manifest["selected_applications"] = {
+        "catalog_id": os.environ["APPLICATION_CATALOG_ID"],
+        "catalog_name": os.environ["APPLICATION_CATALOG_NAME"],
+        "selection_mode": os.environ["SELECTED_APPLICATION_SELECTION_MODE"],
+        "selected_app_ids": json.loads(os.environ["SELECTED_APPLICATION_IDS_JSON"]),
+        "catalog_relpath": application_catalog.relative_to(mission_dir).as_posix(),
+        "selection_relpath": selected_apps.relative_to(mission_dir).as_posix(),
+    }
+
 with (mission_dir / "mission-manifest.json").open("w", encoding="utf-8") as handle:
     json.dump(manifest, handle, indent=2)
     handle.write("\n")
@@ -1860,7 +2217,10 @@ bash "${VENDORED_ADAPTER_ROOT}/validate-media.sh" \
   --os-meta-env "${OS_STAGE_DIR}/os.meta.env"
 
 log "Selected OS artifact: ${SELECTED_OS_PINNED_REF} (${SELECTED_OS_SELECTION_SOURCE})"
-log "Selected airgap bundle: ${SELECTED_AIRGAP_PINNED_REF} (${SELECTED_AIRGAP_SELECTION_SOURCE})"
+log "Selected application catalog bundle: ${SELECTED_AIRGAP_PINNED_REF} (${SELECTED_AIRGAP_SELECTION_SOURCE})"
+if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
+  log "Selected applications: ${SELECTED_APPLICATION_IDS_DISPLAY} (${SELECTED_APPLICATION_SELECTION_MODE})"
+fi
 log "Selected installer substrate: ${SELECTED_INSTALLER_SUBSTRATE_PINNED_REF} (${SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL})"
 
 if [[ "${MISSION_ONLY}" == "1" ]]; then
