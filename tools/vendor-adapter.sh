@@ -25,6 +25,8 @@ mkdir -p "${DEST_DIR}"
 cp -f "${SOURCE_REPO}/tools/media-adapter/adapter.json" "${DEST_DIR}/adapter.json"
 cp -f "${SOURCE_REPO}/tools/media-adapter/compose-media.sh" "${DEST_DIR}/compose-media.sh"
 cp -f "${SOURCE_REPO}/tools/media-adapter/validate-media.sh" "${DEST_DIR}/validate-media.sh"
+cp -f "${SOURCE_REPO}/tools/lib.sh" "${DEST_DIR}/lib.sh"
+cp -f "${SOURCE_REPO}/tools/flash-installer-media.sh" "${DEST_DIR}/flash-installer-media.sh"
 cp -f "${SOURCE_REPO}/tools/strict-kv-metadata.py" "${DEST_DIR}/strict-kv-metadata.py"
 
 cat > "${ROOT}/vendor/${TARGET}.upstream.env" <<EOF

@@ -123,8 +123,9 @@ implemented in phase one; some are mandatory direction even if follow-on phases
   mission bytes.
 - Mission media is host-composed substrate plus selected OS bytes, selected
   airgap bytes, mission manifest, and provenance.
-- Target adapters operate on this distinction even if phase one still uses a
-  checked-out target repo as the substrate build source.
+- Target adapters operate on this distinction, and the unified host tool must
+  compose from a published target-owned substrate artifact rather than
+  requiring a checked-out target repo in the normal operator path.
 
 ### 8. Mission manifest is a first-class contract
 
@@ -230,14 +231,7 @@ implemented in phase one; some are mandatory direction even if follow-on phases
 These are intended requirements, but they are parked for later phases rather
 than phase one.
 
-### 1. Published substrate artifact lane
-
-- The architecture already distinguishes installer substrate from mission media.
-- What is parked is the publication model where the unified tool composes from a
-  published target-owned substrate artifact rather than a checked-out target
-  repo.
-
-### 2. Matchbox migration to fat/local mission media
+### 1. Matchbox migration to fat/local mission media
 
 - Matchbox should gain a local mission partition and local OS/airgap read path.
 - Official Matchbox installs should work with the target NIC unplugged.
@@ -249,17 +243,17 @@ than phase one.
   - target-side remote `install-defaults` removed
   - moving-tag resolution on target removed
 
-### 3. Additional targets
+### 2. Additional targets
 
 - Matchbox support is parked for a later phase.
 - Tinderbox support is parked for a later phase.
 
-### 4. CI no-network validation gates
+### 3. CI no-network validation gates
 
 - Later phases should add explicit validation that official compose/install
   flows succeed without target network access.
 
-### 5. Canonical publish/provenance bundle embedding
+### 4. Canonical publish/provenance bundle embedding
 
 - Embedding upstream/downstream publish-record JSON or candidate-provenance JSON
   is not required for phase-one execution.
@@ -267,7 +261,7 @@ than phase one.
   reasons, that should be added as an explicit later requirement with a defined
   file contract.
 
-### 6. Operator-supplied local file inputs
+### 5. Operator-supplied local file inputs
 
 - Phase one does not require the host composer to accept arbitrary operator-
   supplied local artifact files as primary mission inputs.
