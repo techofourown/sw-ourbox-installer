@@ -33,7 +33,10 @@ later-phase cleanup applies to other targets, especially Matchbox.
 From a normal checkout of `sw-ourbox-installer`:
 
 ```bash
+git clone --recurse-submodules https://github.com/techofourown/sw-ourbox-installer.git
+cd sw-ourbox-installer
 ./tools/prepare-installer-media.sh
+# move media to Pi, boot, follow prompts, device powers off, remove media, boot NVMe
 ```
 
 When run from a terminal, the host composer now mirrors the old installer UX:
