@@ -2475,7 +2475,6 @@ PY
 
   merged_images_lock_sha="$(sha256_file "${MERGED_IMAGES_LOCK_FILE}")"
   bundle_version="host-selected-${APPLICATION_CATALOG_ID}"
-  bundle_ref="host-composed://application-catalog/${APPLICATION_CATALOG_ID}"
 
   cat > "${synthetic_root}/manifest.env" <<EOF_MANIFEST
 OURBOX_AIRGAP_PLATFORM_SCHEMA=1
@@ -2495,6 +2494,9 @@ EOF_MANIFEST
 
   tar -C "${synthetic_root}" -czf "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz" k3s platform manifest.env
   synthetic_sha="$(sha256_file "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz")"
+  # Keep the artifact ref digest-pinned so the mission contract and downstream
+  # validator can treat host-composed bundles like the rest of the stack.
+  bundle_ref="host-composed.local/application-catalog/${APPLICATION_CATALOG_ID}@sha256:${synthetic_sha}"
   printf '%s  %s\n' "${synthetic_sha}" "airgap-platform.tar.gz" > "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz.sha256"
   cp -f "${synthetic_root}/manifest.env" "${AIRGAP_STAGE_DIR}/manifest.env"
   printf '%s\n' "${bundle_ref}" > "${AIRGAP_STAGE_DIR}/artifact.ref"

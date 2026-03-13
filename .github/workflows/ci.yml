@@ -21,6 +21,7 @@ jobs:
           bash -n tools/check-adapter-repo-discovery-smoke.sh
           bash -n tools/check-cache-policy-smoke.sh
           bash -n tools/check-flash-first-policy-smoke.sh
+          bash -n tools/check-host-composed-selected-app-bundle-smoke.sh
           bash -n tools/check-interactive-selection-smoke.sh
           bash -n tools/check-multi-catalog-selection-smoke.sh
           bash -n tools/check-vendored-flash-helper-smoke.sh
@@ -56,6 +57,9 @@ jobs:
 
       - name: Flash-first policy smoke
         run: bash tools/check-flash-first-policy-smoke.sh
+
+      - name: Host-composed selected-app bundle smoke
+        run: bash tools/check-host-composed-selected-app-bundle-smoke.sh
 
       - name: Interactive selection smoke
         run: bash tools/check-interactive-selection-smoke.sh
