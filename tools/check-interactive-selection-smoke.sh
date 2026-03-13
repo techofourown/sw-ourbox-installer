@@ -86,6 +86,7 @@ mkdir -p "${OS_CATALOG_DIR}" "${AIRGAP_CATALOG_DIR}"
   printf 'x86-beta\tx86-beta-older-2\t2026-03-04T12:00:00Z\tv0.4.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 104)"
   printf 'x86-nightly\tx86-nightly-older-2\t2026-03-03T12:00:00Z\tv0.3.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 103)"
   printf 'x86-exp-labs\tx86-exp-labs-older-2\t2026-03-02T12:00:00Z\tv0.2.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "${OS_PAGE2_SELECTED_PINNED}"
+  printf 'x86-stable\tx86-stable-oldest\t2026-03-01T12:00:00\tv0.1.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 100)"
 } > "${OS_CATALOG_DIR}/catalog.tsv"
 
 {
@@ -102,6 +103,7 @@ mkdir -p "${OS_CATALOG_DIR}" "${AIRGAP_CATALOG_DIR}"
   printf 'beta\tbeta-amd64-older-2\t2026-03-04T12:00:00Z\tv0.4.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 204)"
   printf 'nightly\tnightly-amd64-older-2\t2026-03-03T12:00:00Z\tv0.3.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 203)"
   printf 'exp-labs\texp-labs-amd64-older-2\t2026-03-02T12:00:00Z\tv0.2.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "${AIRGAP_PAGE2_SELECTED_PINNED}"
+  printf 'stable\tstable-amd64-oldest\t2026-03-01T12:00:00\tv0.1.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 200)"
 } > "${AIRGAP_CATALOG_DIR}/catalog.tsv"
 
 try_cache_pull_oci_artifact() {
@@ -190,6 +192,18 @@ determine_airgap_ref "${CONTRACT_DIGEST}" <<< $'l\nn\np\n1\n'
 [[ "${SELECTED_AIRGAP_SELECTION_MODE}" == "host-selected" ]] || die "expected paginated airgap selection mode to be host-selected"
 [[ "${SELECTED_AIRGAP_SELECTION_SOURCE}" == "catalog" ]] || die "expected paginated airgap selection source to be catalog"
 [[ "${SELECTED_AIRGAP_RELEASE_CHANNEL}" == "beta" ]] || die "expected paginated airgap release channel to normalize to beta"
+
+AIRGAP_CHANNEL="stable"
+SELECTED_AIRGAP_REF=""
+SELECTED_AIRGAP_SELECTION_MODE=""
+SELECTED_AIRGAP_SELECTION_SOURCE=""
+SELECTED_AIRGAP_RELEASE_CHANNEL=""
+determine_airgap_ref "${CONTRACT_DIGEST}" <<< $'\n'
+[[ "${SELECTED_AIRGAP_REF}" == "${AIRGAP_STABLE_PINNED}" ]] || die "expected mixed timestamp default airgap resolution to choose newest stable row"
+[[ "${SELECTED_AIRGAP_SELECTION_MODE}" == "host-selected" ]] || die "expected default airgap channel selection mode to be host-selected"
+[[ "${SELECTED_AIRGAP_SELECTION_SOURCE}" == "catalog" ]] || die "expected default airgap channel selection source to be catalog"
+[[ "${SELECTED_AIRGAP_RELEASE_CHANNEL}" == "stable" ]] || die "expected default airgap channel release channel to remain stable"
+AIRGAP_CHANNEL=""
 
 root_backing_disk() {
   printf '/dev/nvme0n1\n'

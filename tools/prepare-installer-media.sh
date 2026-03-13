@@ -617,15 +617,17 @@ def parse_created(value: str):
     value = value.strip()
     if not value:
         return None
-    if value.endswith(("Z", "z")):
+    if value.endswith("Z") or value.endswith("z"):
         value = value[:-1] + "+00:00"
     try:
         dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt
     except ValueError:
         return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
 
 catalog_tsv = sys.argv[1]
 channel = sys.argv[2]
@@ -737,15 +739,17 @@ def parse_created(value: str):
     value = value.strip()
     if not value:
         return None
-    if value.endswith(("Z", "z")):
+    if value.endswith("Z") or value.endswith("z"):
         value = value[:-1] + "+00:00"
     try:
         dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt
     except ValueError:
         return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
 
 catalog_tsv = sys.argv[1]
 rows = []
@@ -787,15 +791,17 @@ def parse_created(value: str):
     value = value.strip()
     if not value:
         return None
-    if value.endswith(("Z", "z")):
+    if value.endswith("Z") or value.endswith("z"):
         value = value[:-1] + "+00:00"
     try:
         dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt
     except ValueError:
         return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
 
 catalog_tsv, channel, digest, arch = sys.argv[1:]
 rows = []
@@ -841,15 +847,17 @@ def parse_created(value: str):
     value = value.strip()
     if not value:
         return None
-    if value.endswith(("Z", "z")):
+    if value.endswith("Z") or value.endswith("z"):
         value = value[:-1] + "+00:00"
     try:
         dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt
     except ValueError:
         return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
 
 catalog_tsv, digest, arch = sys.argv[1:]
 rows = []
