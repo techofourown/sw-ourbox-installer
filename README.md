@@ -45,7 +45,7 @@ When run from a terminal, the host composer now mirrors the old installer UX:
 - it prompts for the OS artifact first
 - `ENTER` accepts the default lane choice
 - `c` chooses a different lane
-- `l` lists catalog rows
+- `l` lists catalog rows newest-first with `n`/`p` page navigation
 - `r` enters a custom OCI ref
 - `o` overrides the upstream repo/catalog
 - after OS selection, it prompts for the airgap bundle with the same flow

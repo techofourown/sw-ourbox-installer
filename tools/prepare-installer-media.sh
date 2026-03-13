@@ -609,8 +609,25 @@ select_os_ref_from_catalog() {
 
   python3 - <<'PY' "${catalog_tsv}" "${channel}"
 import csv
+from datetime import datetime, timezone
 import re
 import sys
+
+def parse_created(value: str):
+    value = value.strip()
+    if not value:
+        return None
+    if value.endswith("Z") or value.endswith("z"):
+        value = value[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt
+    except ValueError:
+        return None
 
 catalog_tsv = sys.argv[1]
 channel = sys.argv[2]
@@ -621,13 +638,14 @@ with open(catalog_tsv, "r", encoding="utf-8") as handle:
         row_channel = (row.get("channel") or "").strip()
         pinned_ref = (row.get("pinned_ref") or "").strip()
         created = (row.get("created") or "").strip()
-        if not created:
+        created_key = parse_created(created)
+        if created_key is None:
             continue
         if row_channel not in {channel, f"x86-{channel}"}:
             continue
         if not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", pinned_ref):
             continue
-        rows.append((created, pinned_ref))
+        rows.append((created_key, pinned_ref))
 
 if not rows:
     raise SystemExit(1)
@@ -713,8 +731,25 @@ list_os_catalog_entries() {
 
   python3 - <<'PY' "${catalog_tsv}"
 import csv
+from datetime import datetime, timezone
 import re
 import sys
+
+def parse_created(value: str):
+    value = value.strip()
+    if not value:
+        return None
+    if value.endswith("Z") or value.endswith("z"):
+        value = value[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt
+    except ValueError:
+        return None
 
 catalog_tsv = sys.argv[1]
 rows = []
@@ -727,14 +762,15 @@ with open(catalog_tsv, "r", encoding="utf-8") as handle:
         version = (row.get("version") or "").strip()
         contract = (row.get("platform_contract_digest") or "").strip()
         pinned_ref = (row.get("pinned_ref") or "").strip()
-        if not created:
+        created_key = parse_created(created)
+        if created_key is None:
             continue
         if not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", pinned_ref):
             continue
-        rows.append((created, row_channel, tag, version, contract, pinned_ref))
+        rows.append((created_key, created, row_channel, tag, version, contract, pinned_ref))
 
-rows.sort(key=lambda item: (item[0], item[2]), reverse=True)
-for created, row_channel, tag, version, contract, pinned_ref in rows:
+rows.sort(key=lambda item: (item[0], item[3]), reverse=True)
+for _created_key, created, row_channel, tag, version, contract, pinned_ref in rows:
     print("\t".join((row_channel, tag, created, version, contract, pinned_ref)))
 PY
 }
@@ -747,8 +783,25 @@ select_airgap_ref_from_catalog() {
 
   python3 - <<'PY' "${catalog_tsv}" "${channel}" "${required_contract_digest}" "${required_arch}"
 import csv
+from datetime import datetime, timezone
 import re
 import sys
+
+def parse_created(value: str):
+    value = value.strip()
+    if not value:
+        return None
+    if value.endswith("Z") or value.endswith("z"):
+        value = value[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt
+    except ValueError:
+        return None
 
 catalog_tsv, channel, digest, arch = sys.argv[1:]
 rows = []
@@ -760,7 +813,8 @@ with open(catalog_tsv, "r", encoding="utf-8") as handle:
         row_arch = (row.get("arch") or "").strip()
         pinned_ref = (row.get("pinned_ref") or "").strip()
         created = (row.get("created") or "").strip()
-        if not created:
+        created_key = parse_created(created)
+        if created_key is None:
             continue
         if row_channel != channel:
             continue
@@ -768,7 +822,7 @@ with open(catalog_tsv, "r", encoding="utf-8") as handle:
             continue
         if not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", pinned_ref):
             continue
-        rows.append((created, pinned_ref))
+        rows.append((created_key, pinned_ref))
 
 if not rows:
     raise SystemExit(1)
@@ -785,8 +839,25 @@ list_airgap_catalog_entries() {
 
   python3 - <<'PY' "${catalog_tsv}" "${required_contract_digest}" "${required_arch}"
 import csv
+from datetime import datetime, timezone
 import re
 import sys
+
+def parse_created(value: str):
+    value = value.strip()
+    if not value:
+        return None
+    if value.endswith("Z") or value.endswith("z"):
+        value = value[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt
+    except ValueError:
+        return None
 
 catalog_tsv, digest, arch = sys.argv[1:]
 rows = []
@@ -800,18 +871,134 @@ with open(catalog_tsv, "r", encoding="utf-8") as handle:
         row_arch = (row.get("arch") or "").strip()
         row_digest = (row.get("platform_contract_digest") or "").strip()
         pinned_ref = (row.get("pinned_ref") or "").strip()
-        if not created:
+        created_key = parse_created(created)
+        if created_key is None:
             continue
         if row_arch != arch or row_digest != digest:
             continue
         if not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", pinned_ref):
             continue
-        rows.append((created, row_channel, tag, version, row_digest, pinned_ref))
+        rows.append((created_key, created, row_channel, tag, version, row_digest, pinned_ref))
 
-rows.sort(key=lambda item: (item[0], item[2]), reverse=True)
-for created, row_channel, tag, version, row_digest, pinned_ref in rows:
+rows.sort(key=lambda item: (item[0], item[3]), reverse=True)
+for _created_key, created, row_channel, tag, version, row_digest, pinned_ref in rows:
     print("\t".join((row_channel, tag, created, version, row_digest, pinned_ref)))
 PY
+}
+
+render_os_catalog_entry() {
+  local display_number="$1"
+  local entry="$2"
+  local channel=""
+  local tag=""
+  local created=""
+  local version=""
+  local contract=""
+  local pinned_ref=""
+
+  IFS=$'\t' read -r channel tag created version contract pinned_ref <<<"${entry}"
+  printf "  %d) %-12s %-30s %s %s %s\n" "${display_number}" "${channel}" "${tag}" "${version}" "${created}" "${contract}"
+}
+
+render_airgap_catalog_entry() {
+  local display_number="$1"
+  local entry="$2"
+  local channel=""
+  local tag=""
+  local created=""
+  local version=""
+  local contract=""
+  local pinned_ref=""
+
+  IFS=$'\t' read -r channel tag created version contract pinned_ref <<<"${entry}"
+  printf "  %d) %-10s %-24s %s %s %s\n" "${display_number}" "${channel}" "${tag}" "${version}" "${created}" "${contract}"
+}
+
+paginate_catalog_entries_interactive() {
+  local title="$1"
+  local entries_name="$2"
+  local render_fn="$3"
+  local outvar="$4"
+  local pick=""
+  local page_size=10
+  local page=0
+  local total=0
+  local page_count=0
+  local start=0
+  local end=0
+  local visible_count=0
+  local entry_number=1
+  local selected_index=0
+  local -n entries_ref="${entries_name}"
+
+  total="${#entries_ref[@]}"
+  (( total > 0 )) || return 1
+  page_count=$(((total + page_size - 1) / page_size))
+
+  while true; do
+    start=$((page * page_size))
+    end=$((start + page_size))
+    if (( end > total )); then
+      end="${total}"
+    fi
+    visible_count=$((end - start))
+
+    echo
+    echo "${title} (page $((page + 1))/${page_count}, newest first, showing $((start + 1))-${end} of ${total}):"
+    for ((entry_number = 1; entry_number <= visible_count; entry_number++)); do
+      "${render_fn}" "${entry_number}" "${entries_ref[$((start + entry_number - 1))]}"
+    done
+
+    echo "Options:"
+    echo "  [1-${visible_count}] Select row on this page"
+    if (( page + 1 < page_count )); then
+      echo "  n       Next page"
+    fi
+    if (( page > 0 )); then
+      echo "  p       Previous page"
+    fi
+    echo "  [ENTER] Cancel"
+    echo "  q       Cancel"
+    echo
+
+    read -r -p "Choice: " pick
+    case "${pick}" in
+      "")
+        return 1
+        ;;
+      q|Q)
+        return 1
+        ;;
+      n|N)
+        if (( page + 1 < page_count )); then
+          page=$((page + 1))
+        else
+          log "Already on the last page."
+        fi
+        ;;
+      p|P)
+        if (( page > 0 )); then
+          page=$((page - 1))
+        else
+          log "Already on the first page."
+        fi
+        ;;
+      *)
+        if [[ ! "${pick}" =~ ^[0-9]+$ ]]; then
+          log "Invalid selection."
+          continue
+        fi
+        if (( pick < 1 || pick > visible_count )); then
+          log "Selection out of range."
+          continue
+        fi
+
+        selected_index=$((start + pick - 1))
+        printf -v "${outvar}" '%s' "${entries_ref[selected_index]}"
+        return 0
+        ;;
+    esac
+  done
 }
 
 resolve_os_channel_ref() {
@@ -899,7 +1086,6 @@ choose_os_channel_interactive() {
 select_os_ref_from_catalog_interactive() {
   local catalog_cache_dir=""
   local catalog_tsv=""
-  local pick=""
   local chosen=""
   local normalized_channel=""
   local channel=""
@@ -908,7 +1094,6 @@ select_os_ref_from_catalog_interactive() {
   local version=""
   local contract=""
   local pinned_ref=""
-  local i=1
   local -a entries=()
 
   if ! try_cache_pull_oci_artifact "${OS_REPO}:${OS_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
@@ -923,26 +1108,7 @@ select_os_ref_from_catalog_interactive() {
     return 1
   fi
 
-  echo
-  echo "Catalog entries (${OS_REPO}:${OS_CATALOG_TAG}):"
-  for chosen in "${entries[@]}"; do
-    IFS=$'\t' read -r channel tag created version contract pinned_ref <<<"${chosen}"
-    printf "  %d) %-12s %-30s %s %s %s\n" "${i}" "${channel}" "${tag}" "${version}" "${created}" "${contract}"
-    i=$((i + 1))
-  done
-
-  read -r -p "Choose entry [1-${#entries[@]}] (or ENTER to cancel): " pick
-  [[ -n "${pick}" ]] || return 1
-  [[ "${pick}" =~ ^[0-9]+$ ]] || {
-    log "Invalid selection."
-    return 1
-  }
-  if (( pick < 1 || pick > ${#entries[@]} )); then
-    log "Selection out of range."
-    return 1
-  fi
-
-  chosen="${entries[$((pick - 1))]}"
+  paginate_catalog_entries_interactive "Catalog entries (${OS_REPO}:${OS_CATALOG_TAG})" entries render_os_catalog_entry chosen || return 1
   IFS=$'\t' read -r channel tag created version contract pinned_ref <<<"${chosen}"
   normalized_channel="$(normalize_release_channel "${channel}")"
   OS_CHANNEL="${normalized_channel}"
@@ -1165,7 +1331,6 @@ select_airgap_ref_from_catalog_interactive() {
   local required_contract_digest="$1"
   local catalog_cache_dir=""
   local catalog_tsv=""
-  local pick=""
   local chosen=""
   local channel=""
   local tag=""
@@ -1173,7 +1338,6 @@ select_airgap_ref_from_catalog_interactive() {
   local version=""
   local contract=""
   local pinned_ref=""
-  local i=1
   local -a entries=()
 
   if ! try_cache_pull_oci_artifact "${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
@@ -1188,26 +1352,7 @@ select_airgap_ref_from_catalog_interactive() {
     return 1
   fi
 
-  echo
-  echo "Airgap catalog entries (${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}):"
-  for chosen in "${entries[@]}"; do
-    IFS=$'\t' read -r channel tag created version contract pinned_ref <<<"${chosen}"
-    printf "  %d) %-10s %-24s %s %s %s\n" "${i}" "${channel}" "${tag}" "${version}" "${created}" "${contract}"
-    i=$((i + 1))
-  done
-
-  read -r -p "Choose entry [1-${#entries[@]}] (or ENTER to cancel): " pick
-  [[ -n "${pick}" ]] || return 1
-  [[ "${pick}" =~ ^[0-9]+$ ]] || {
-    log "Invalid selection."
-    return 1
-  }
-  if (( pick < 1 || pick > ${#entries[@]} )); then
-    log "Selection out of range."
-    return 1
-  fi
-
-  chosen="${entries[$((pick - 1))]}"
+  paginate_catalog_entries_interactive "Airgap catalog entries (${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG})" entries render_airgap_catalog_entry chosen || return 1
   IFS=$'\t' read -r channel tag created version contract pinned_ref <<<"${chosen}"
   AIRGAP_CHANNEL="$(normalize_release_channel "${channel}")"
   SELECTED_AIRGAP_SELECTION_MODE="host-selected"
