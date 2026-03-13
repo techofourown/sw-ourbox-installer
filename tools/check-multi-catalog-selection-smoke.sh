@@ -21,6 +21,9 @@ source <(
     | sed '/^initial_cache_refs=()/,$d'
 )
 
+ROOT="${HARNESS_ROOT}"
+TMP_ROOT="${HARNESS_TMP_ROOT}"
+
 interactive_selection_enabled() {
   return 0
 }
