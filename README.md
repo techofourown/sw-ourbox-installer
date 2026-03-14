@@ -60,6 +60,12 @@ When run from a terminal, the host composer now mirrors the old installer UX:
   - `ENTER` uses the merged default app set
   - `a` installs all apps from the merged catalog
   - `c` chooses a custom app set by number
+- after application selection, it offers an installed-system SSH key step:
+  - `ENTER` keeps installed-target SSH key auth disabled
+  - pick an existing named key to reuse it across installs and target families
+  - `n` creates a new named key
+  - `d` deletes one named key
+  - `x` deletes all named keys
 - then it lists removable USB target media, makes you choose by number, and
   requires `SELECT` before the compose/flash step continues
 - the normal no-flag path flashes removable media; it does not keep extra build
@@ -79,6 +85,7 @@ Useful flags:
 - `--airgap-ref REF[,REF...]` to choose one or more explicit application catalog bundle refs instead of the interactive picker
 - `--all-apps` to install every app published by the merged catalog set
 - `--app-ids ID[,ID...]` to install an explicit subset of apps from the merged catalog set
+- `--installed-target-ssh-key-name NAME` to reuse or create a named host-side SSH key and stage its public key for the installed target
 - `--mission-only` to stage only the mission directory under `./out/<target>` (or `--output-dir`)
 - `--compose-only` to compose installer media to disk under `./out/<target>` (or `--output-dir`) without flashing
 - `--output-dir DIR` to keep staged mission or composed media in a specific directory for those explicit non-default modes
@@ -90,6 +97,13 @@ Cache behavior:
 - the tool keeps a host-side cache of pulled artifacts
 - when matching cached assets are available, it asks whether to reuse them
 - at the end of compose, it offers to clear cached assets to reclaim disk space
+
+Installed-target SSH behavior:
+
+- named host-side SSH keys are stored in `${XDG_STATE_HOME:-$HOME/.local/state}/ourbox/installed-target-ssh-keys` by default
+- the staged mission carries only the selected public key, never the private key
+- the installed target can use that staged host key for key-based SSH
+- password-based installed-target SSH remains a separate target-side prompt during installation
 
 ## Repository contract
 
