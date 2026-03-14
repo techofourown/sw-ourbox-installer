@@ -4,6 +4,8 @@ import json
 import re
 from pathlib import Path
 
+CATALOG_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
 
 def sanitize_token(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "app"
@@ -22,6 +24,10 @@ def validate_catalog(catalog: dict, catalog_path: Path) -> None:
     catalog_name = str(catalog.get("catalog_name", "")).strip()
     if not catalog_id:
         raise SystemExit(f"{catalog_path} must declare catalog_id")
+    if not CATALOG_ID_RE.fullmatch(catalog_id):
+        raise SystemExit(
+            f"{catalog_path} declares invalid catalog_id {catalog_id!r}; expected lowercase machine token"
+        )
     if not catalog_name:
         raise SystemExit(f"{catalog_path} must declare catalog_name")
     apps = catalog.get("apps")
@@ -41,6 +47,12 @@ def validate_catalog(catalog: dict, catalog_path: Path) -> None:
     unknown_defaults = sorted(set(str(item).strip() for item in defaults) - seen_ids)
     if unknown_defaults:
         raise SystemExit(f"{catalog_path} declares unknown default_app_ids: {', '.join(unknown_defaults)}")
+    default_backends = 0
+    for app in apps:
+        if bool(app.get("default_backend", False)):
+            default_backends += 1
+    if default_backends > 1:
+        raise SystemExit(f"{catalog_path} declares more than one default_backend app")
 
 
 def validate_images_lock(images_lock: dict, images_lock_path: Path) -> dict[str, dict]:
@@ -128,11 +140,17 @@ def main() -> int:
 
         default_ids = [str(item).strip() for item in catalog["default_app_ids"]]
         defaults_set = set(default_ids)
+        seen_source_app_uids: set[str] = set()
 
         for app_index, raw_app in enumerate(catalog["apps"]):
             app = dict(raw_app)
             local_app_id = str(app["id"]).strip()
             app_uid = canonical_app_uid(source, app)
+            if app_uid in seen_source_app_uids:
+                raise SystemExit(
+                    f"{catalog_path} contains duplicate canonical app identity {app_uid!r}"
+                )
+            seen_source_app_uids.add(app_uid)
             image_names = app.get("image_names")
             if not isinstance(image_names, list) or not image_names:
                 raise SystemExit(f"{catalog_path} app {local_app_id!r} must declare a non-empty image_names list")
@@ -203,6 +221,27 @@ def main() -> int:
                     )
             if local_app_id in defaults_set:
                 merged_defaults.add(app_uid)
+
+    default_backend_entries = [
+        (app_uid, merged_by_uid[app_uid])
+        for app_uid in merged_by_uid
+        if merged_by_uid[app_uid]["default_backend"]
+    ]
+    if len(default_backend_entries) > 1:
+        default_backend_entries.sort(key=lambda item: item[1]["_source_order"])
+        kept_app_uid, kept_entry = default_backend_entries[0]
+        for app_uid, entry in default_backend_entries[1:]:
+            entry["default_backend"] = False
+            conflict_records.append(
+                {
+                    "type": "default-backend",
+                    "app_uid": app_uid,
+                    "kept_app_uid": kept_app_uid,
+                    "kept_catalog_id": kept_entry["source_catalog_ids"][0],
+                    "dropped_catalog_id": entry["source_catalog_ids"][0],
+                    "policy": "first-selected-default-backend-wins",
+                }
+            )
 
     if not merged_defaults:
         raise SystemExit("merged catalogs produced an empty default app set")

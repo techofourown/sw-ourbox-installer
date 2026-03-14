@@ -2398,10 +2398,18 @@ conflicts = summary.get("conflicts") or []
 
 print(f"Merged application catalogs: {len(source_catalogs)} source(s), {len(selected_ids)} selected app(s)")
 for conflict in conflicts:
+    conflict_type = str(conflict.get("type", "")).strip()
     app_uid = str(conflict.get("app_uid", "")).strip()
     kept = str(conflict.get("kept_catalog_id", "")).strip()
     dropped = str(conflict.get("dropped_catalog_id", "")).strip()
     policy = str(conflict.get("policy", "")).strip()
+    kept_app_uid = str(conflict.get("kept_app_uid", "")).strip()
+    if conflict_type == "default-backend" and app_uid and kept_app_uid and kept and dropped:
+        print(
+            f"Default backend conflict: kept {kept_app_uid} from {kept}, disabled {app_uid} from {dropped} "
+            f"({policy or 'first-selected-default-backend-wins'})"
+        )
+        continue
     if app_uid and kept and dropped:
         print(f"Conflict resolved for {app_uid}: kept {kept}, dropped {dropped} ({policy or 'first-selected-source-wins'})")
 PY

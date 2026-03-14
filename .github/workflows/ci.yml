@@ -19,6 +19,8 @@ jobs:
           bash -n tools/cache.sh
           bash -n tools/vendor-adapter.sh
           bash -n tools/check-adapter-repo-discovery-smoke.sh
+          bash -n tools/check-application-catalog-default-backend-conflict-smoke.sh
+          bash -n tools/check-application-catalog-duplicate-app-uid-smoke.sh
           bash -n tools/check-cache-policy-smoke.sh
           bash -n tools/check-application-catalog-conflict-policy-smoke.sh
           bash -n tools/check-flash-first-policy-smoke.sh
@@ -60,6 +62,12 @@ jobs:
 
       - name: Application catalog conflict-policy smoke
         run: bash tools/check-application-catalog-conflict-policy-smoke.sh
+
+      - name: Application catalog duplicate app_uid smoke
+        run: bash tools/check-application-catalog-duplicate-app-uid-smoke.sh
+
+      - name: Application catalog default-backend conflict smoke
+        run: bash tools/check-application-catalog-default-backend-conflict-smoke.sh
 
       - name: Flash-first policy smoke
         run: bash tools/check-flash-first-policy-smoke.sh
