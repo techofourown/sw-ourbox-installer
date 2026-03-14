@@ -109,6 +109,8 @@ implemented in phase one; some are mandatory direction even if follow-on phases
   bundle shape.
 - The host must merge the selected catalogs into one effective catalog before
   application selection.
+- If multiple selected catalogs provide the same stable app identity, the host
+  must require an explicit source choice rather than silently picking one.
 - The app-selection flow should reuse the same business logic regardless of
   whether the effective catalog came from one source catalog or many.
 - If the operator chooses a custom app set, the selected app ids must be a

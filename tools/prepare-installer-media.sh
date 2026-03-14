@@ -22,6 +22,7 @@ OS_REF=""
 AIRGAP_CHANNEL=""
 AIRGAP_REF=""
 APP_IDS=""
+APP_SOURCE_RESOLUTIONS_SPEC=""
 ALL_APPS=0
 OUTPUT_DIR=""
 MISSION_ONLY=0
@@ -44,6 +45,7 @@ SELECTED_INSTALLED_TARGET_SSH_KEY_TYPE=""
 : "${OURBOX_CACHE_CLEANUP_POLICY:=ask}"
 : "${OURBOX_INSTALLED_TARGET_SSH_KEYSTORE_ROOT:=${DEFAULT_OURBOX_STATE_ROOT}/ourbox/installed-target-ssh-keys}"
 CONTAINER_CLI=""
+APPLICATION_SOURCE_RESOLUTIONS_JSON="{}"
 
 usage() {
   cat <<EOF
@@ -75,6 +77,10 @@ Options:
                               application catalogs without prompting
   --app-ids ID[,ID...]        Install an explicit comma-separated merged
                               application id subset without prompting
+  --app-source-resolutions SPEC
+                              Resolve duplicate merged application sources
+                              without prompting. Format:
+                              APP_UID=CATALOG_ID[,APP_UID=CATALOG_ID...]
   --installed-target-ssh-key-name NAME
                               Select or create a named host-side installed-target
                               SSH key and stage its public key into mission media
@@ -467,6 +473,11 @@ while [[ $# -gt 0 ]]; do
     --app-ids)
       [[ $# -ge 2 ]] || die "--app-ids requires a value"
       APP_IDS="$2"
+      shift 2
+      ;;
+    --app-source-resolutions)
+      [[ $# -ge 2 ]] || die "--app-source-resolutions requires a value"
+      APP_SOURCE_RESOLUTIONS_SPEC="$2"
       shift 2
       ;;
     --installed-target-ssh-key-name)
@@ -2073,6 +2084,256 @@ determine_application_catalog_sources() {
   SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY="$(application_catalog_source_display_from_json "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}")"
 }
 
+parse_application_source_resolutions_spec() {
+  local spec="${1:-}"
+
+  python3 - <<'PY' "${spec}"
+import json
+import sys
+
+spec = sys.argv[1].strip()
+if not spec:
+    print("{}")
+    raise SystemExit(0)
+
+resolutions = {}
+for raw_entry in spec.split(","):
+    entry = raw_entry.strip()
+    if not entry:
+        continue
+    if "=" not in entry:
+        raise SystemExit(
+            f"invalid --app-source-resolutions entry {entry!r}; expected APP_UID=CATALOG_ID"
+        )
+    app_uid, catalog_id = entry.split("=", 1)
+    app_uid = app_uid.strip()
+    catalog_id = catalog_id.strip()
+    if not app_uid or not catalog_id:
+        raise SystemExit(
+            f"invalid --app-source-resolutions entry {entry!r}; expected APP_UID=CATALOG_ID"
+        )
+    if app_uid in resolutions:
+        raise SystemExit(f"duplicate app source resolution for {app_uid}")
+    resolutions[app_uid] = catalog_id
+
+print(json.dumps(resolutions, sort_keys=True))
+PY
+}
+
+application_source_resolution_set() {
+  local app_uid="$1"
+  local catalog_id="$2"
+
+  python3 - <<'PY' "${APPLICATION_SOURCE_RESOLUTIONS_JSON}" "${app_uid}" "${catalog_id}"
+import json
+import sys
+
+resolutions = json.loads(sys.argv[1])
+app_uid = sys.argv[2].strip()
+catalog_id = sys.argv[3].strip()
+if not app_uid or not catalog_id:
+    raise SystemExit("application source resolution updates require non-empty app_uid and catalog_id")
+resolutions[app_uid] = catalog_id
+print(json.dumps(resolutions, sort_keys=True))
+PY
+}
+
+write_application_catalog_duplicate_report() {
+  local source_records_json="$1"
+  local out_json="$2"
+
+  python3 "${ROOT}/tools/merge-application-catalogs.py" \
+    --analysis-only \
+    --sources-json "${source_records_json}" \
+    --out-duplicates "${out_json}"
+}
+
+list_duplicate_application_uids_without_resolution() {
+  local duplicate_report_json="$1"
+
+  python3 - <<'PY' "${duplicate_report_json}" "${APPLICATION_SOURCE_RESOLUTIONS_JSON}"
+import json
+import sys
+
+duplicate_report = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+resolutions = json.loads(sys.argv[2])
+
+for item in duplicate_report:
+    app_uid = str(item.get("app_uid", "")).strip()
+    if not app_uid:
+        continue
+    if app_uid not in resolutions:
+        print(app_uid)
+PY
+}
+
+duplicate_application_candidate_count() {
+  local duplicate_report_json="$1"
+  local app_uid="$2"
+
+  python3 - <<'PY' "${duplicate_report_json}" "${app_uid}"
+import json
+import sys
+
+duplicate_report = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+target_app_uid = sys.argv[2].strip()
+for item in duplicate_report:
+    if str(item.get("app_uid", "")).strip() == target_app_uid:
+        candidates = item.get("candidates") or []
+        if not isinstance(candidates, list) or not candidates:
+            raise SystemExit(f"duplicate report entry for {target_app_uid!r} is missing candidates")
+        print(len(candidates))
+        raise SystemExit(0)
+raise SystemExit(f"duplicate report is missing app_uid {target_app_uid!r}")
+PY
+}
+
+duplicate_application_catalog_id_from_choice() {
+  local duplicate_report_json="$1"
+  local app_uid="$2"
+  local raw_choice="$3"
+
+  python3 - <<'PY' "${duplicate_report_json}" "${app_uid}" "${raw_choice}"
+import json
+import sys
+
+duplicate_report = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+target_app_uid = sys.argv[2].strip()
+raw_choice = sys.argv[3].strip()
+if not raw_choice.isdigit():
+    raise SystemExit(f"invalid source choice {raw_choice!r}")
+choice = int(raw_choice)
+
+for item in duplicate_report:
+    if str(item.get("app_uid", "")).strip() != target_app_uid:
+        continue
+    candidates = item.get("candidates") or []
+    if choice < 1 or choice > len(candidates):
+        raise SystemExit(f"source choice out of range: {raw_choice}")
+    catalog_id = str(candidates[choice - 1].get("catalog_id", "")).strip()
+    if not catalog_id:
+        raise SystemExit(f"duplicate report candidate {raw_choice} for {target_app_uid!r} is missing catalog_id")
+    print(catalog_id)
+    raise SystemExit(0)
+
+raise SystemExit(f"duplicate report is missing app_uid {target_app_uid!r}")
+PY
+}
+
+render_duplicate_application_source_prompt() {
+  local duplicate_report_json="$1"
+  local app_uid="$2"
+
+  python3 - <<'PY' "${duplicate_report_json}" "${app_uid}"
+import json
+import sys
+
+duplicate_report = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+target_app_uid = sys.argv[2].strip()
+
+for item in duplicate_report:
+    app_uid = str(item.get("app_uid", "")).strip()
+    if app_uid != target_app_uid:
+        continue
+
+    display_name = str(item.get("display_name", app_uid)).strip() or app_uid
+    definitions_identical = bool(item.get("definitions_identical", False))
+    print("Duplicate application source selection")
+    if display_name == app_uid:
+        print(f"Application : {app_uid}")
+    else:
+        print(f"Application : {display_name} ({app_uid})")
+    if definitions_identical:
+        print("Note        : These catalog entries currently look identical, but the source catalog still must be chosen.")
+    else:
+        print("Note        : These catalog entries differ. Choose which source catalog to expose.")
+    print("Sources:")
+
+    for index, candidate in enumerate(item.get("candidates") or [], start=1):
+        catalog_name = str(candidate.get("catalog_name", "")).strip()
+        catalog_id = str(candidate.get("catalog_id", "")).strip()
+        marker = " [default in source]" if bool(candidate.get("default_selected", False)) else ""
+        print(f"  {index}) {catalog_name} ({catalog_id}){marker}")
+        description = str(candidate.get("description", "")).strip()
+        if description:
+            print(f"      {description}")
+        print(f"      artifact: {candidate.get('artifact_ref', '')}")
+        resolved_images = candidate.get("resolved_images") or []
+        if resolved_images:
+            print("      images:")
+            for image in resolved_images:
+                print(f"        - {image.get('name', '')}: {image.get('ref', '')}")
+        raise SystemExit(0)
+
+raise SystemExit(f"duplicate report is missing app_uid {target_app_uid!r}")
+PY
+}
+
+require_duplicate_application_source_choices() {
+  local duplicate_report_json="$1"
+  local -a unresolved_app_uids=()
+  local app_uid=""
+  local raw_choice=""
+  local candidate_count=""
+  local chosen_catalog_id=""
+
+  mapfile -t unresolved_app_uids < <(list_duplicate_application_uids_without_resolution "${duplicate_report_json}")
+  (( ${#unresolved_app_uids[@]} > 0 )) || return 0
+
+  if ! interactive_selection_enabled; then
+    die "$(
+      python3 - <<'PY' "${duplicate_report_json}"
+import json
+import sys
+
+duplicate_report = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+lines = [
+    "duplicate apps are present across the selected catalogs and require explicit source choices.",
+    "Rerun interactively or pass --app-source-resolutions APP_UID=CATALOG_ID[,APP_UID=CATALOG_ID...].",
+]
+for item in duplicate_report:
+    app_uid = str(item.get("app_uid", "")).strip()
+    if not app_uid:
+        continue
+    choices = ", ".join(
+        f\"{candidate.get('catalog_id', '')} ({candidate.get('catalog_name', '')})\"
+        for candidate in (item.get('candidates') or [])
+    )
+    lines.append(f\"  - {app_uid}: {choices}\")
+print(\"\\n\".join(lines))
+PY
+    )"
+  fi
+
+  echo
+  echo "Selected application catalogs contain duplicate applications."
+  echo "Choose which catalog should provide each duplicated app in the merged catalog."
+
+  for app_uid in "${unresolved_app_uids[@]}"; do
+    candidate_count="$(duplicate_application_candidate_count "${duplicate_report_json}" "${app_uid}")"
+    while :; do
+      echo
+      render_duplicate_application_source_prompt "${duplicate_report_json}" "${app_uid}"
+      echo
+      read -r -p "Choose source [1-${candidate_count}] (q=quit): " raw_choice
+      case "${raw_choice}" in
+        q|Q)
+          die "Mission compose aborted by user"
+          ;;
+        *)
+          chosen_catalog_id="$(duplicate_application_catalog_id_from_choice "${duplicate_report_json}" "${app_uid}" "${raw_choice}" 2>/dev/null || true)"
+          if [[ -z "${chosen_catalog_id}" ]]; then
+            log "Invalid source selection."
+            continue
+          fi
+          APPLICATION_SOURCE_RESOLUTIONS_JSON="$(application_source_resolution_set "${app_uid}" "${chosen_catalog_id}")"
+          break
+          ;;
+      esac
+    done
+  done
+}
+
 APPLICATION_CATALOG_PRESENT=0
 APPLICATION_CATALOG_FILE=""
 APPLICATION_CATALOG_ID=""
@@ -2297,6 +2558,7 @@ for index, app in enumerate(catalog["apps"], start=1):
     display_name = str(app.get("display_name", app_id))
     description = str(app.get("description", "")).strip()
     source_catalog_names = app.get("source_catalog_names") or []
+    selected_source_catalog_name = str(app.get("selected_source_catalog_name", "")).strip()
     marker = "default" if app_id in default_ids else ""
     line = f"  {index}) {app_id:<16} {display_name}"
     if marker:
@@ -2305,7 +2567,14 @@ for index, app in enumerate(catalog["apps"], start=1):
     if description:
         print(f"      {description}")
     if isinstance(source_catalog_names, list) and source_catalog_names:
-        print(f"      source: {', '.join(str(name) for name in source_catalog_names)}")
+        normalized_names = [str(name).strip() for name in source_catalog_names if str(name).strip()]
+        if selected_source_catalog_name and len(normalized_names) > 1:
+            alternates = [name for name in normalized_names if name != selected_source_catalog_name]
+            print(f"      selected source: {selected_source_catalog_name}")
+            if alternates:
+                print(f"      also available from: {', '.join(alternates)}")
+        else:
+            print(f"      source: {', '.join(normalized_names)}")
 PY
 }
 
@@ -2545,6 +2814,7 @@ prepare_merged_application_catalog() {
   local selected_ids_csv=""
   local source_records_tsv="${TMP_ROOT}/application-catalog-source-records.tsv"
   local source_records_json="${TMP_ROOT}/application-catalog-source-records.json"
+  local duplicate_report_json="${TMP_ROOT}/application-catalog-duplicates.json"
   local extracted_root="${TMP_ROOT}/application-catalog-sources"
   local merge_root="${TMP_ROOT}/merged-application-catalog"
   local requested_catalog_id=""
@@ -2653,6 +2923,9 @@ if not records:
 Path(sys.argv[2]).write_text(json.dumps(records, indent=2) + "\n", encoding="utf-8")
 PY
 
+  write_application_catalog_duplicate_report "${source_records_json}" "${duplicate_report_json}"
+  require_duplicate_application_source_choices "${duplicate_report_json}"
+
   selected_ids_csv=""
   if [[ "${selection_mode}" == "custom" ]]; then
     selected_ids_csv="$(json_array_to_csv "${selected_ids_json}")"
@@ -2668,6 +2941,8 @@ PY
     --sources-json "${source_records_json}" \
     --selection-mode "${selection_mode}" \
     --selected-app-ids "${selected_ids_csv}" \
+    --source-resolutions-json "${APPLICATION_SOURCE_RESOLUTIONS_JSON}" \
+    --out-duplicates "${duplicate_report_json}" \
     --out-catalog "${MERGED_APPLICATION_CATALOG_FILE}" \
     --out-selected-apps "${MERGED_SELECTED_APPLICATIONS_FILE}" \
     --out-images-lock "${MERGED_IMAGES_LOCK_FILE}" \
@@ -2696,13 +2971,30 @@ for conflict in conflicts:
     app_uid = str(conflict.get("app_uid", "")).strip()
     kept = str(conflict.get("kept_catalog_id", "")).strip()
     dropped = str(conflict.get("dropped_catalog_id", "")).strip()
+    selected = str(conflict.get("selected_catalog_id", "")).strip()
     policy = str(conflict.get("policy", "")).strip()
     kept_app_uid = str(conflict.get("kept_app_uid", "")).strip()
+    definitions_identical = bool(conflict.get("definitions_identical", False))
+    available_catalog_ids = conflict.get("available_catalog_ids") or []
     if conflict_type == "default-backend" and app_uid and kept_app_uid and kept and dropped:
         print(
             f"Default backend conflict: kept {kept_app_uid} from {kept}, disabled {app_uid} from {dropped} "
             f"({policy or 'first-selected-default-backend-wins'})"
         )
+        continue
+    if conflict_type == "duplicate-app-source" and app_uid and selected:
+        alternates = [str(item).strip() for item in available_catalog_ids if str(item).strip() and str(item).strip() != selected]
+        note = "definitions-identical" if definitions_identical else "definitions-differ"
+        if alternates:
+            print(
+                f"Selected source for {app_uid}: {selected} (also available from {', '.join(alternates)}; "
+                f"{policy or 'operator-selected-source'}, {note})"
+            )
+        else:
+            print(
+                f"Selected source for {app_uid}: {selected} "
+                f"({policy or 'operator-selected-source'}, {note})"
+            )
         continue
     if app_uid and kept and dropped:
         print(f"Conflict resolved for {app_uid}: kept {kept}, dropped {dropped} ({policy or 'first-selected-source-wins'})")
@@ -2948,6 +3240,8 @@ is_sha256_digest "${PLATFORM_CONTRACT_DIGEST}" || die "invalid platform contract
 is_pinned_ref "${BAKED_AIRGAP_REF}" || die "selected OS payload is missing a pinned baked airgap ref"
 is_sha256_digest "${BAKED_AIRGAP_DIGEST}" || die "selected OS payload is missing a baked airgap digest"
 [[ "${BAKED_AIRGAP_ARCH}" == "${EXPECTED_AIRGAP_ARCH}" ]] || die "selected OS payload baked airgap arch mismatch: ${BAKED_AIRGAP_ARCH}"
+
+APPLICATION_SOURCE_RESOLUTIONS_JSON="$(parse_application_source_resolutions_spec "${APP_SOURCE_RESOLUTIONS_SPEC}")"
 
 determine_application_catalog_sources
 SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL="$(selected_installer_release_channel)"
