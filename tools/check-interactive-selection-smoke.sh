@@ -205,6 +205,71 @@ determine_airgap_ref "${CONTRACT_DIGEST}" <<< $'\n'
 [[ "${SELECTED_AIRGAP_RELEASE_CHANNEL}" == "stable" ]] || die "expected default airgap channel release channel to remain stable"
 AIRGAP_CHANNEL=""
 
+AIRGAP_EXTRACT_DIR="${TMP_ROOT}/airgap-extract"
+mkdir -p "${AIRGAP_EXTRACT_DIR}/platform"
+cat > "${AIRGAP_EXTRACT_DIR}/platform/catalog.json" <<'EOF'
+{
+  "schema": 1,
+  "kind": "ourbox-application-catalog",
+  "catalog_id": "demo-apps",
+  "catalog_name": "Demo Application Catalog",
+  "catalog_description": "fixture",
+  "default_app_ids": [
+    "landing",
+    "todo-bloom"
+  ],
+  "apps": [
+    {
+      "id": "landing",
+      "display_name": "Landing",
+      "description": "Landing page"
+    },
+    {
+      "id": "todo-bloom",
+      "display_name": "Todo Bloom",
+      "description": "Todo app"
+    },
+    {
+      "id": "dufs",
+      "display_name": "Dufs",
+      "description": "File browser"
+    }
+  ]
+}
+EOF
+
+load_application_catalog_metadata
+[[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]] || die "expected catalog metadata to be detected"
+[[ "${APPLICATION_CATALOG_ID}" == "demo-apps" ]] || die "unexpected application catalog id"
+
+ALL_APPS=0
+APP_IDS=""
+SELECTED_APPLICATION_SELECTION_MODE=""
+SELECTED_APPLICATION_IDS_JSON=""
+SELECTED_APPLICATION_IDS_DISPLAY=""
+determine_application_selection <<< $'\n'
+[[ "${SELECTED_APPLICATION_SELECTION_MODE}" == "catalog-defaults" ]] || die "expected ENTER to accept the default application selection"
+[[ "${SELECTED_APPLICATION_IDS_JSON}" == '["landing", "todo-bloom"]' ]] || die "expected default application ids to match the catalog defaults"
+
+ALL_APPS=1
+APP_IDS=""
+SELECTED_APPLICATION_SELECTION_MODE=""
+SELECTED_APPLICATION_IDS_JSON=""
+SELECTED_APPLICATION_IDS_DISPLAY=""
+determine_application_selection
+[[ "${SELECTED_APPLICATION_SELECTION_MODE}" == "all-apps" ]] || die "expected --all-apps mode to choose every catalog app"
+[[ "${SELECTED_APPLICATION_IDS_JSON}" == '["landing", "todo-bloom", "dufs"]' ]] || die "expected --all-apps mode to include every catalog app"
+
+ALL_APPS=0
+APP_IDS="todo-bloom,dufs"
+SELECTED_APPLICATION_SELECTION_MODE=""
+SELECTED_APPLICATION_IDS_JSON=""
+SELECTED_APPLICATION_IDS_DISPLAY=""
+determine_application_selection
+[[ "${SELECTED_APPLICATION_SELECTION_MODE}" == "custom" ]] || die "expected --app-ids mode to be custom"
+[[ "${SELECTED_APPLICATION_IDS_JSON}" == '["todo-bloom", "dufs"]' ]] || die "expected --app-ids mode to preserve the explicit app ids"
+APP_IDS=""
+
 root_backing_disk() {
   printf '/dev/nvme0n1\n'
 }

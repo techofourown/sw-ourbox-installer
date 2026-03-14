@@ -22,14 +22,22 @@
       "nightly": "x86-nightly",
       "exp-labs": "x86-exp-labs"
     },
-    "airgap_repo": "ghcr.io/techofourown/sw-ourbox-os/airgap-platform",
-    "airgap_catalog_tag": "catalog-amd64",
-    "airgap_channel_tags": {
-      "stable": "stable-amd64",
-      "beta": "beta-amd64",
-      "nightly": "nightly-amd64",
-      "exp-labs": "exp-labs-amd64"
-    },
+    "application_catalog_sources": [
+      {
+        "catalog_id": "demo-apps",
+        "catalog_name": "Demo Application Catalog",
+        "description": "Default application catalog consuming demo and hello-world apps.",
+        "artifact_ref": "ghcr.io/techofourown/sw-ourbox-catalog-demo:latest",
+        "default_selected": true
+      },
+      {
+        "catalog_id": "hello-world",
+        "catalog_name": "Hello World Catalog",
+        "description": "Hello-world-only catalog used to prove multi-catalog app sourcing.",
+        "artifact_ref": "ghcr.io/techofourown/sw-ourbox-catalog-hello-world:latest",
+        "default_selected": false
+      }
+    ],
     "installer_repo": "ghcr.io/techofourown/ourbox-woodbox-installer",
     "installer_channel_tags": {
       "stable": "x86-installer-stable",
@@ -57,7 +65,7 @@
   ],
   "notes": [
     "Phase-one compose uses the published Woodbox installer substrate artifact while the unified host repo owns selection and mission assembly.",
-    "Host-composed Woodbox mission media embeds the selected OS payload plus the selected airgap bundle and mission manifest.",
+    "Host-composed Woodbox mission media embeds the selected OS payload plus a synthesized application bundle built from one or more selected application catalogs and the mission manifest.",
     "The Woodbox preinstall runtime consumes the embedded mission as the authoritative local source for OS provenance and selected airgap installation input."
   ]
 }

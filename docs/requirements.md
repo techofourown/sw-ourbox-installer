@@ -63,8 +63,15 @@ implemented in phase one; some are mandatory direction even if follow-on phases
 
 - The operator must be able to choose both:
   - an OS artifact
-  - an `airgap-platform` bundle
+  - one or more application catalogs (currently transported as
+    `airgap-platform` bundles)
   while provisioning installer media on the host.
+- When the selected catalogs advertise catalog metadata, the operator must also
+  be able to choose which applications from the merged effective catalog are
+  installed:
+  - the merged default app set
+  - all apps from the merged catalog
+  - a custom app subset from the merged catalog
 - Host-side selection must happen before the target boots.
 - The host-side selection surface must support:
   - official catalog selection
@@ -92,25 +99,37 @@ implemented in phase one; some are mandatory direction even if follow-on phases
 - Moving channel tags are convenience inputs, not ground truth.
 - Catalog rows or explicit digest-pinned refs are the preferred truth surface.
 
-### 5. Host-side airgap selection remains bounded by the OS contract
+### 5. Host-side application catalog selection remains bounded by the OS contract
 
-- If the operator selects an airgap bundle that differs from the OS payload's
-  baked bundle, the selected airgap bundle must match the selected OS payload's
-  `OURBOX_PLATFORM_CONTRACT_DIGEST`.
+- If the operator selects one or more application catalogs that differ from the
+  OS payload's baked bundle, every selected catalog bundle must match the
+  selected OS payload's `OURBOX_PLATFORM_CONTRACT_DIGEST`.
 - Architecture must also match the target slot.
 - The host must fail closed on contract mismatch, arch mismatch, or malformed
   bundle shape.
+- The host must merge the selected catalogs into one effective catalog before
+  application selection.
+- The app-selection flow should reuse the same business logic regardless of
+  whether the effective catalog came from one source catalog or many.
+- If the operator chooses a custom app set, the selected app ids must be a
+  subset of the merged catalog's declared applications.
+- Catalog merge and deconfliction must be driven by stable app identity rather
+  than display name alone.
 
 ### 6. Mission media is a mission pack
 
 - Composed media is not a generic warehouse of all targets and all bundles.
 - A mission pack is for one selected target/profile/artifact tuple, with one
-  selected airgap bundle.
+  synthesized application bundle derived from one or more selected application
+  catalogs.
 - A mission pack is the selected mission for one stick, not a universal payload
   warehouse.
 - Mission media must carry:
   - the staged OS bytes
-  - the staged airgap bytes
+  - the staged synthesized application-bundle bytes
+  - the selected application catalog identities needed to explain where the
+    app set came from
+  - the selected-application metadata needed to reproduce the chosen app set
   - a mission manifest
   - the metadata actually required to compose and install those staged bytes
 
@@ -136,7 +155,8 @@ implemented in phase one; some are mandatory direction even if follow-on phases
   - compose tool identity
   - adapter identity
   - selected OS identity
-  - selected airgap identity
+  - selected application catalog identities
+  - selected application-set identity
   - platform-contract identity
   - staged file paths and integrity hashes
   - install-mode fields relevant to target-side configuration prompts
@@ -233,11 +253,11 @@ than phase one.
 
 ### 1. Matchbox migration to fat/local mission media
 
-- Matchbox should gain a local mission partition and local OS/airgap read path.
+- Matchbox should gain a local mission partition and local OS/application-catalog read path.
 - Official Matchbox installs should work with the target NIC unplugged.
 - Matchbox purge follows with that migration:
   - target-side OS catalog browsing removed
-  - target-side airgap catalog browsing removed
+  - target-side application-catalog browsing removed
   - target-side `oras` bootstrapping and pulling removed
   - target-side registry login removed
   - target-side remote `install-defaults` removed
@@ -343,6 +363,7 @@ The simplest phase-one interpretation is:
 - the unified repo exists
 - Woodbox is the first target
 - the host can choose OS and airgap inputs while provisioning media
+- the host can choose a selected app set from the chosen application catalog
 - the host can choose from catalogs and explicit refs
 - the host stages verified local bytes plus a mission manifest and the metadata
   actually needed for installation

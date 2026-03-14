@@ -19,9 +19,16 @@ jobs:
           bash -n tools/cache.sh
           bash -n tools/vendor-adapter.sh
           bash -n tools/check-adapter-repo-discovery-smoke.sh
+          bash -n tools/check-application-catalog-default-backend-conflict-smoke.sh
+          bash -n tools/check-application-catalog-duplicate-app-uid-smoke.sh
           bash -n tools/check-cache-policy-smoke.sh
+          bash -n tools/check-application-catalog-conflict-policy-smoke.sh
           bash -n tools/check-flash-first-policy-smoke.sh
+          bash -n tools/check-merged-catalog-determinism-smoke.sh
+          bash -n tools/check-host-composed-selected-app-bundle-smoke.sh
           bash -n tools/check-interactive-selection-smoke.sh
+          bash -n tools/check-multi-catalog-selection-smoke.sh
+          bash -n tools/check-published-catalog-bundles-smoke.sh
           bash -n tools/check-vendored-flash-helper-smoke.sh
           bash -n tools/check-vendored-woodbox-pin.sh
           bash -n tools/check-woodbox-contract-smoke.sh
@@ -33,6 +40,7 @@ jobs:
       - name: Python and JSON validation
         run: |
           python3 -m py_compile tools/validate-mission-manifest.py
+          python3 -m py_compile tools/merge-application-catalogs.py
           python3 -m py_compile vendor/woodbox/strict-kv-metadata.py
           python3 - <<'PY'
           import json
@@ -52,11 +60,35 @@ jobs:
       - name: Cache policy smoke
         run: bash tools/check-cache-policy-smoke.sh
 
+      - name: Application catalog conflict-policy smoke
+        run: bash tools/check-application-catalog-conflict-policy-smoke.sh
+
+      - name: Application catalog duplicate app_uid smoke
+        run: bash tools/check-application-catalog-duplicate-app-uid-smoke.sh
+
+      - name: Application catalog default-backend conflict smoke
+        run: bash tools/check-application-catalog-default-backend-conflict-smoke.sh
+
       - name: Flash-first policy smoke
         run: bash tools/check-flash-first-policy-smoke.sh
 
+      - name: Merged-catalog determinism smoke
+        run: bash tools/check-merged-catalog-determinism-smoke.sh
+
+      - name: Host-composed selected-app bundle smoke
+        run: bash tools/check-host-composed-selected-app-bundle-smoke.sh
+
       - name: Interactive selection smoke
         run: bash tools/check-interactive-selection-smoke.sh
+
+      - name: Multi-catalog selection smoke
+        run: bash tools/check-multi-catalog-selection-smoke.sh
+
+      - name: Install ORAS
+        uses: oras-project/setup-oras@v1
+
+      - name: Published catalog bundle smoke
+        run: bash tools/check-published-catalog-bundles-smoke.sh
 
       - name: Vendored flash helper smoke
         run: bash tools/check-vendored-flash-helper-smoke.sh

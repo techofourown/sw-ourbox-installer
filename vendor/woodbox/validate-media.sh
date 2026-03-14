@@ -362,6 +362,97 @@ airgap_payload_path = require_staged_file("mission selected_airgap.payload_relpa
 airgap_manifest_path = require_staged_file("mission selected_airgap.manifest_relpath", manifest_relpath)
 validate_sha256_sidecar("mission selected_airgap.payload.relpath", payload_relpath, airgap_payload_path)
 validate_airgap_bundle(airgap_payload_path, airgap_manifest_path, airgap_contract)
+
+selected_applications = manifest.get("selected_applications")
+if selected_applications is not None:
+    if not isinstance(selected_applications, dict) or not selected_applications:
+        raise SystemExit("mission selected_applications must be an object when present")
+    catalog_id = str(selected_applications.get("catalog_id", ""))
+    catalog_name = str(selected_applications.get("catalog_name", ""))
+    selection_mode = str(selected_applications.get("selection_mode", ""))
+    catalog_relpath = selected_applications.get("catalog_relpath")
+    selection_relpath = selected_applications.get("selection_relpath")
+    selected_app_ids = selected_applications.get("selected_app_ids")
+    if not catalog_id:
+        raise SystemExit("mission selected_applications.catalog_id must be set")
+    if not catalog_name:
+        raise SystemExit("mission selected_applications.catalog_name must be set")
+    if not selection_mode:
+        raise SystemExit("mission selected_applications.selection_mode must be set")
+    if not catalog_relpath:
+        raise SystemExit("mission selected_applications.catalog_relpath must be set")
+    if not selection_relpath:
+        raise SystemExit("mission selected_applications.selection_relpath must be set")
+    if not isinstance(selected_app_ids, list) or not selected_app_ids:
+        raise SystemExit("mission selected_applications.selected_app_ids must be a non-empty list")
+
+    normalized_app_ids = []
+    seen_ids = set()
+    for raw_app_id in selected_app_ids:
+        app_id = str(raw_app_id).strip()
+        if not app_id:
+            raise SystemExit("mission selected_applications.selected_app_ids contains an empty app id")
+        if app_id in seen_ids:
+            raise SystemExit(f"mission selected_applications.selected_app_ids duplicates app id {app_id}")
+        seen_ids.add(app_id)
+        normalized_app_ids.append(app_id)
+
+    catalog_path = require_staged_file("mission selected_applications.catalog_relpath", catalog_relpath)
+    selection_path = require_staged_file("mission selected_applications.selection_relpath", selection_relpath)
+
+    with catalog_path.open("r", encoding="utf-8") as handle:
+        catalog_data = json.load(handle)
+    if catalog_data.get("schema") != 1:
+        raise SystemExit("mission application catalog must declare schema=1")
+    if catalog_data.get("kind") != "ourbox-application-catalog":
+        raise SystemExit("mission application catalog kind must be 'ourbox-application-catalog'")
+    if str(catalog_data.get("catalog_id", "")) != catalog_id:
+        raise SystemExit("mission application catalog catalog_id must match selected_applications.catalog_id")
+    if str(catalog_data.get("catalog_name", "")) != catalog_name:
+        raise SystemExit("mission application catalog catalog_name must match selected_applications.catalog_name")
+    catalog_apps = catalog_data.get("apps")
+    if not isinstance(catalog_apps, list) or not catalog_apps:
+        raise SystemExit("mission application catalog must declare a non-empty apps list")
+    catalog_app_ids = set()
+    for app in catalog_apps:
+        app_id = str(app.get("id", "")).strip()
+        if not app_id:
+            raise SystemExit("mission application catalog contains an app without an id")
+        catalog_app_ids.add(app_id)
+    unknown_app_ids = [app_id for app_id in normalized_app_ids if app_id not in catalog_app_ids]
+    if unknown_app_ids:
+        raise SystemExit(
+            "mission selected_applications.selected_app_ids must be a subset of mission application catalog apps"
+        )
+
+    with selection_path.open("r", encoding="utf-8") as handle:
+        selection_data = json.load(handle)
+    if selection_data.get("schema") != 1:
+        raise SystemExit("mission selected applications file must declare schema=1")
+    if selection_data.get("kind") != "ourbox-selected-applications":
+        raise SystemExit("mission selected applications file kind must be 'ourbox-selected-applications'")
+    if str(selection_data.get("catalog_id", "")) != catalog_id:
+        raise SystemExit("mission selected applications file catalog_id must match selected_applications.catalog_id")
+    if str(selection_data.get("selection_mode", "")) != selection_mode:
+        raise SystemExit("mission selected applications file selection_mode must match selected_applications.selection_mode")
+
+    selection_ids = selection_data.get("selected_app_ids")
+    if not isinstance(selection_ids, list) or not selection_ids:
+        raise SystemExit("mission selected applications file must declare a non-empty selected_app_ids list")
+
+    normalized_selection_ids = []
+    seen_selection_ids = set()
+    for raw_app_id in selection_ids:
+        app_id = str(raw_app_id).strip()
+        if not app_id:
+            raise SystemExit("mission selected applications file contains an empty app id")
+        if app_id in seen_selection_ids:
+            raise SystemExit(f"mission selected applications file duplicates app id {app_id}")
+        seen_selection_ids.add(app_id)
+        normalized_selection_ids.append(app_id)
+
+    if normalized_selection_ids != normalized_app_ids:
+        raise SystemExit("mission selected applications file does not match selected_applications.selected_app_ids")
 PY
 
 payload_check="$(

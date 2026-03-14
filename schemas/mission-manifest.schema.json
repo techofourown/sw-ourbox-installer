@@ -328,6 +328,78 @@
         }
       }
     },
+    "selected_applications": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "catalog_id",
+        "catalog_name",
+        "selection_mode",
+        "selected_app_ids",
+        "catalog_relpath",
+        "selection_relpath"
+      ],
+      "properties": {
+        "catalog_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "catalog_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selection_mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selected_app_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "catalog_relpath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selection_relpath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_catalogs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "catalog_id",
+              "catalog_name",
+              "artifact_ref",
+              "artifact_digest"
+            ],
+            "properties": {
+              "catalog_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "catalog_name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "artifact_ref": {
+                "type": "string",
+                "minLength": 1
+              },
+              "artifact_digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      }
+    },
     "staged_files": {
       "type": "array",
       "items": {
