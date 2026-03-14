@@ -2433,7 +2433,10 @@ synthesize_selected_application_bundle() {
   rm -rf "${extracted_payload_root}" "${synthetic_root}"
   mkdir -p "${extracted_payload_root}" "${synthetic_images_dir}"
 
-  tar -xzf "${OS_PAYLOAD}" -C "${extracted_payload_root}" airgap
+  if ! tar -xzf "${OS_PAYLOAD}" -C "${extracted_payload_root}" airgap 2>/dev/null; then
+    tar -xzf "${OS_PAYLOAD}" -C "${extracted_payload_root}" ./airgap \
+      || die "selected OS payload did not contain a baked airgap directory"
+  fi
   [[ -d "${base_airgap_dir}" ]] || die "selected OS payload did not contain a baked airgap directory"
   [[ -f "${base_airgap_dir}/manifest.env" ]] || die "selected OS payload baked airgap bundle is missing manifest.env"
   [[ -d "${base_airgap_dir}/platform/images" ]] || die "selected OS payload baked airgap bundle is missing platform/images"
