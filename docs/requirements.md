@@ -215,6 +215,10 @@ implemented in phase one; some are mandatory direction even if follow-on phases
   - first-boot bootstrap behavior
 - Keeping these local does not widen target authority to resolve or pull
   artifacts.
+- Host-side staging of an installed-target SSH authorized key must remain
+  optional. Skipping host-staged SSH must not block compose or installation,
+  because target-side username/password configuration remains part of the local
+  install flow.
 
 ### 12. Phase-one target scope is Woodbox first and includes the purge
 

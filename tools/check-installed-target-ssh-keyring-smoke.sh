@@ -11,6 +11,26 @@ OURBOX_PREPARE_INSTALLER_LIBRARY_ONLY=1 source "${ROOT}/tools/prepare-installer-
 
 OURBOX_INSTALLED_TARGET_SSH_KEYSTORE_ROOT="${TMP}/keyring"
 
+skip_output_file="${TMP}/skip-output.txt"
+interactive_select_installed_target_ssh_key <<< $'\n' >"${skip_output_file}"
+[[ -z "${SELECTED_INSTALLED_TARGET_SSH_MODE}" ]] || {
+  echo "expected installed-target SSH selection mode to stay disabled when the operator skips SSH setup" >&2
+  exit 1
+}
+[[ -z "${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME}" ]] || {
+  echo "expected no installed-target SSH key name after the operator skips SSH setup" >&2
+  exit 1
+}
+[[ ! -e "${OURBOX_INSTALLED_TARGET_SSH_KEYSTORE_ROOT}" ]] || {
+  echo "expected SSH skip path to avoid creating a key store" >&2
+  exit 1
+}
+skip_output="$(<"${skip_output_file}")"
+[[ "${skip_output}" == *"This step is optional."* ]] || {
+  echo "expected SSH skip prompt to explain that installed-target SSH is optional" >&2
+  exit 1
+}
+
 disable_installed_target_ssh_key_selection
 select_installed_target_ssh_key_by_name "shared-dev"
 

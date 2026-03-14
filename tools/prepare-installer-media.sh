@@ -235,6 +235,25 @@ delete_all_installed_target_ssh_keys() {
   disable_installed_target_ssh_key_selection
 }
 
+show_installed_target_ssh_intro() {
+  echo
+  echo "Host-side installed-system SSH access"
+  echo "This step is optional."
+  echo "You can continue without staging any SSH key."
+  echo "If you skip this now, you can still configure a username and password later on the target during installation."
+  echo
+  echo "Options:"
+  echo "  [ENTER] Continue without installed-target SSH"
+  echo "  n       Continue without installed-target SSH"
+  echo "  y       Configure an installed-target SSH key now"
+  echo "  q       Quit"
+  echo
+}
+
+log_installed_target_ssh_disabled_continue() {
+  log "Continuing without installed-target SSH key. You can still configure username/password later on the target."
+}
+
 show_installed_target_ssh_key_panel() {
   local -a key_names=("$@")
   local idx=0
@@ -259,7 +278,7 @@ show_installed_target_ssh_key_panel() {
   fi
   echo
   echo "Options:"
-  echo "  [ENTER] Keep installed-target SSH key disabled"
+  echo "  [ENTER] Continue without installed-target SSH key"
   if (( ${#key_names[@]} > 0 )); then
     echo "  [1-${#key_names[@]}] Use an existing named key"
     echo "  d       Delete a named key"
@@ -317,12 +336,41 @@ delete_all_installed_target_ssh_keys_interactive() {
   log "Deleted all installed-target SSH keys"
 }
 
+interactive_confirm_installed_target_ssh_setup() {
+  local choice=""
+
+  while true; do
+    show_installed_target_ssh_intro
+    read -r -p "Configure installed-target SSH access now? [y/N]: " choice
+
+    case "${choice}" in
+      ""|n|N)
+        disable_installed_target_ssh_key_selection
+        log_installed_target_ssh_disabled_continue
+        return 1
+        ;;
+      y|Y)
+        return 0
+        ;;
+      q|Q)
+        die "Mission compose aborted by user"
+        ;;
+      *)
+        log "Unknown option."
+        ;;
+    esac
+  done
+}
+
 interactive_select_installed_target_ssh_key() {
   local choice=""
   local idx=0
   local -a key_names=()
 
   disable_installed_target_ssh_key_selection
+  if ! interactive_confirm_installed_target_ssh_setup; then
+    return 0
+  fi
 
   while true; do
     mapfile -t key_names < <(list_installed_target_ssh_key_names)
@@ -332,6 +380,7 @@ interactive_select_installed_target_ssh_key() {
     case "${choice}" in
       "")
         disable_installed_target_ssh_key_selection
+        log_installed_target_ssh_disabled_continue
         return 0
         ;;
       n|N)
