@@ -85,7 +85,8 @@ cat > "${MERGED_IMAGES_LOCK_FILE}" <<'EOF'
 }
 EOF
 
-PAYLOAD_ROOT="${TMP_ROOT}/payload-root/airgap"
+PAYLOAD_ARCHIVE_ROOT="${TMP_ROOT}/payload-root"
+PAYLOAD_ROOT="${PAYLOAD_ARCHIVE_ROOT}/airgap"
 mkdir -p "${PAYLOAD_ROOT}/k3s" "${PAYLOAD_ROOT}/platform/images"
 printf '#!/bin/sh\nexit 0\n' > "${PAYLOAD_ROOT}/k3s/k3s"
 chmod +x "${PAYLOAD_ROOT}/k3s/k3s"
@@ -105,7 +106,9 @@ OURBOX_PLATFORM_PROFILE=demo-apps
 OURBOX_PLATFORM_IMAGES_LOCK_PATH=platform/images.lock.json
 OURBOX_PLATFORM_IMAGES_LOCK_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 EOF
-tar -C "${TMP_ROOT}/payload-root" -czf "${OS_PAYLOAD}" airgap
+mkdir -p "${PAYLOAD_ARCHIVE_ROOT}/rootfs"
+printf 'fixture payload metadata\n' > "${PAYLOAD_ARCHIVE_ROOT}/payload.meta.env"
+tar -C "${PAYLOAD_ARCHIVE_ROOT}" -czf "${OS_PAYLOAD}" .
 
 pull_and_save_image_tar() {
   echo "unexpected image pull in host-composed selected-app bundle smoke" >&2
