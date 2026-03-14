@@ -425,6 +425,29 @@ determine_installed_target_ssh_key() {
   fi
 }
 
+stage_selected_installed_target_ssh_artifacts() {
+  local mission_dir="$1"
+  local stage_dir="${mission_dir}/artifacts/installed-target-ssh"
+
+  rm -rf "${stage_dir}"
+
+  if [[ -z "${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME}" ]]; then
+    return 0
+  fi
+
+  mkdir -p "${stage_dir}"
+  cp -f "${SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_PATH}" "${stage_dir}/authorized-key.pub"
+}
+
+log_installed_target_ssh_selection_summary() {
+  if [[ -n "${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME}" ]]; then
+    log "Installed-target SSH key: ${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME} (${SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_FINGERPRINT})"
+    return 0
+  fi
+
+  log "Installed-target SSH key: disabled"
+}
+
 show_target_default_choice() {
   local target="$1"
 
@@ -3327,7 +3350,6 @@ STAGING_OUTPUT_DIR="${TMP_ROOT}/prepared-output"
 MISSION_DIR="${STAGING_OUTPUT_DIR}/mission"
 OS_STAGE_DIR="${MISSION_DIR}/artifacts/os"
 AIRGAP_STAGE_DIR="${MISSION_DIR}/artifacts/airgap"
-INSTALLED_TARGET_SSH_STAGE_DIR="${MISSION_DIR}/artifacts/installed-target-ssh"
 mkdir -p "${OS_STAGE_DIR}" "${AIRGAP_STAGE_DIR}"
 
 cp -f "${OS_PAYLOAD}" "${OS_STAGE_DIR}/os-payload.tar.gz"
@@ -3340,10 +3362,7 @@ if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
   cp -f "${MERGED_APPLICATION_CATALOG_FILE}" "${AIRGAP_STAGE_DIR}/catalog.json"
   cp -f "${MERGED_SELECTED_APPLICATIONS_FILE}" "${AIRGAP_STAGE_DIR}/selected-apps.json"
 fi
-if [[ -n "${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME}" ]]; then
-  mkdir -p "${INSTALLED_TARGET_SSH_STAGE_DIR}"
-  cp -f "${SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_PATH}" "${INSTALLED_TARGET_SSH_STAGE_DIR}/authorized-key.pub"
-fi
+stage_selected_installed_target_ssh_artifacts "${MISSION_DIR}"
 
 export MISSION_DIR COMPOSE_ID COMPOSED_AT TARGET COMPOSER_REVISION ADAPTER_SOURCE_REPO ADAPTER_SOURCE_REVISION
 export VENDORED_ADAPTER_ROOT ADAPTER_RUNTIME_PROMPTS_JSON MINIMUM_MEDIA_SIZE_BYTES OUTPUT_KIND
@@ -3517,9 +3536,7 @@ log "Synthesized application bundle: ${SELECTED_AIRGAP_PINNED_REF} (${SELECTED_A
 if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
   log "Selected applications: ${SELECTED_APPLICATION_IDS_DISPLAY} (${SELECTED_APPLICATION_SELECTION_MODE})"
 fi
-if [[ -n "${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME}" ]]; then
-  log "Installed-target SSH key: ${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME} (${SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_FINGERPRINT})"
-fi
+log_installed_target_ssh_selection_summary
 log "Selected installer substrate: ${SELECTED_INSTALLER_SUBSTRATE_PINNED_REF} (${SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL})"
 
 if [[ "${MISSION_ONLY}" == "1" ]]; then

@@ -55,6 +55,19 @@ select_installed_target_ssh_key_by_name "shared-dev"
   exit 1
 }
 
+MISSION_DIR="${TMP}/mission"
+stage_selected_installed_target_ssh_artifacts "${MISSION_DIR}"
+[[ -f "${MISSION_DIR}/artifacts/installed-target-ssh/authorized-key.pub" ]] || {
+  echo "expected selected installed-target SSH key to be staged into the mission tree" >&2
+  exit 1
+}
+cmp -s \
+  "${OURBOX_INSTALLED_TARGET_SSH_KEYSTORE_ROOT}/shared-dev/id_ed25519.pub" \
+  "${MISSION_DIR}/artifacts/installed-target-ssh/authorized-key.pub" || {
+  echo "expected staged mission SSH key to match the selected public key" >&2
+  exit 1
+}
+
 select_installed_target_ssh_key_by_name "stable-lab-box"
 mapfile -t stored_keys < <(list_installed_target_ssh_key_names)
 [[ "${#stored_keys[@]}" -eq 2 ]] || {
@@ -75,6 +88,11 @@ delete_all_installed_target_ssh_keys
 }
 [[ -z "${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME}" ]] || {
   echo "expected delete-all to clear any active installed-target SSH key selection" >&2
+  exit 1
+}
+stage_selected_installed_target_ssh_artifacts "${MISSION_DIR}"
+[[ ! -e "${MISSION_DIR}/artifacts/installed-target-ssh" ]] || {
+  echo "expected staging helper to remove stale mission SSH artifacts when SSH is disabled" >&2
   exit 1
 }
 
