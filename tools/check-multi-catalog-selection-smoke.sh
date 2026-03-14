@@ -238,6 +238,14 @@ duplicate_prompt_output="$(<"${duplicate_prompt_output_file}")"
   echo "expected duplicate application source prompt header in interactive output" >&2
   exit 1
 }
+[[ "${duplicate_prompt_output}" == *"1) Demo Application Catalog (demo-apps)"* ]] || {
+  echo "expected duplicate application source prompt to show the first source catalog" >&2
+  exit 1
+}
+[[ "${duplicate_prompt_output}" == *"2) Hello World Catalog (hello-world)"* ]] || {
+  echo "expected duplicate application source prompt to show the second source catalog" >&2
+  exit 1
+}
 
 python3 "${ROOT}/tools/merge-application-catalogs.py" \
   --sources-json "${TMP_ROOT}/sources.json" \

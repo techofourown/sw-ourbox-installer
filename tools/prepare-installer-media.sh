@@ -2263,7 +2263,7 @@ for item in duplicate_report:
             print("      images:")
             for image in resolved_images:
                 print(f"        - {image.get('name', '')}: {image.get('ref', '')}")
-        raise SystemExit(0)
+    raise SystemExit(0)
 
 raise SystemExit(f"duplicate report is missing app_uid {target_app_uid!r}")
 PY
