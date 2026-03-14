@@ -7,6 +7,15 @@ source "${ROOT}/tools/lib.sh"
 # shellcheck disable=SC1091
 source "${ROOT}/tools/cache.sh"
 
+DEFAULT_OURBOX_STATE_ROOT="${XDG_STATE_HOME:-}"
+if [[ -z "${DEFAULT_OURBOX_STATE_ROOT}" ]]; then
+  if [[ -n "${HOME:-}" ]]; then
+    DEFAULT_OURBOX_STATE_ROOT="${HOME}/.local/state"
+  else
+    DEFAULT_OURBOX_STATE_ROOT="${ROOT}/state"
+  fi
+fi
+
 TARGET=""
 OS_CHANNEL="stable"
 OS_REF=""
@@ -18,6 +27,7 @@ OUTPUT_DIR=""
 MISSION_ONLY=0
 COMPOSE_ONLY=0
 FLASH_DEVICE=""
+INSTALLED_TARGET_SSH_KEY_NAME_REQUEST=""
 VENDORED_ADAPTER_ROOT="${ROOT}/vendor/woodbox"
 VENDORED_METADATA_PARSER="${VENDORED_ADAPTER_ROOT}/strict-kv-metadata.py"
 MISSION_SCHEMA="${ROOT}/schemas/mission-manifest.schema.json"
@@ -25,8 +35,14 @@ MISSION_SCHEMA_VALIDATOR="${ROOT}/tools/validate-mission-manifest.py"
 TMP_ROOT=""
 CACHE_REUSE_ENABLED=0
 CACHE_REUSE_DECISION_MADE=0
+SELECTED_INSTALLED_TARGET_SSH_MODE=""
+SELECTED_INSTALLED_TARGET_SSH_KEY_NAME=""
+SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_PATH=""
+SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_FINGERPRINT=""
+SELECTED_INSTALLED_TARGET_SSH_KEY_TYPE=""
 : "${OURBOX_CACHE_REUSE_POLICY:=ask}"
 : "${OURBOX_CACHE_CLEANUP_POLICY:=ask}"
+: "${OURBOX_INSTALLED_TARGET_SSH_KEYSTORE_ROOT:=${DEFAULT_OURBOX_STATE_ROOT}/ourbox/installed-target-ssh-keys}"
 CONTAINER_CLI=""
 
 usage() {
@@ -59,6 +75,9 @@ Options:
                               application catalogs without prompting
   --app-ids ID[,ID...]        Install an explicit comma-separated merged
                               application id subset without prompting
+  --installed-target-ssh-key-name NAME
+                              Select or create a named host-side installed-target
+                              SSH key and stage its public key into mission media
   --output-dir DIR            Keep staged mission or composed media under DIR
                               (used only by explicit non-default modes)
   --mission-only              Stage the mission directory only; do not compose or flash media
@@ -79,6 +98,276 @@ interactive_selection_enabled() {
 default_output_dir_for_target() {
   local target="$1"
   printf '%s/out/%s\n' "${ROOT}" "${target}"
+}
+
+installed_target_ssh_key_name_is_valid() {
+  local name="$1"
+  [[ "${name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]
+}
+
+installed_target_ssh_key_dir() {
+  local key_name="$1"
+  printf '%s/%s\n' "${OURBOX_INSTALLED_TARGET_SSH_KEYSTORE_ROOT}" "${key_name}"
+}
+
+installed_target_ssh_private_key_path() {
+  local key_name="$1"
+  printf '%s/id_ed25519\n' "$(installed_target_ssh_key_dir "${key_name}")"
+}
+
+installed_target_ssh_public_key_path_for_name() {
+  local key_name="$1"
+  printf '%s/id_ed25519.pub\n' "$(installed_target_ssh_key_dir "${key_name}")"
+}
+
+require_installed_target_ssh_key_tooling() {
+  need_cmd ssh-keygen
+  need_cmd hostname
+}
+
+installed_target_ssh_public_key_fingerprint() {
+  local public_key="$1"
+  require_installed_target_ssh_key_tooling
+  ssh-keygen -lf "${public_key}" -E sha256 | awk 'NF>=2 {print $2; exit}'
+}
+
+disable_installed_target_ssh_key_selection() {
+  SELECTED_INSTALLED_TARGET_SSH_MODE=""
+  SELECTED_INSTALLED_TARGET_SSH_KEY_NAME=""
+  SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_PATH=""
+  SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_FINGERPRINT=""
+  SELECTED_INSTALLED_TARGET_SSH_KEY_TYPE=""
+}
+
+installed_target_ssh_key_exists() {
+  local key_name="$1"
+  [[ -f "$(installed_target_ssh_private_key_path "${key_name}")" ]] \
+    && [[ -f "$(installed_target_ssh_public_key_path_for_name "${key_name}")" ]]
+}
+
+list_installed_target_ssh_key_names() {
+  local dir=""
+  [[ -d "${OURBOX_INSTALLED_TARGET_SSH_KEYSTORE_ROOT}" ]] || return 0
+  while read -r dir; do
+    [[ -n "${dir}" ]] || continue
+    installed_target_ssh_key_exists "${dir}" || continue
+    printf '%s\n' "${dir}"
+  done < <(find "${OURBOX_INSTALLED_TARGET_SSH_KEYSTORE_ROOT}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+}
+
+ensure_installed_target_ssh_key_exists() {
+  local key_name="$1"
+  local key_dir=""
+  local private_key=""
+  local public_key=""
+  local comment=""
+
+  installed_target_ssh_key_name_is_valid "${key_name}" \
+    || die "invalid installed-target SSH key name: ${key_name}"
+
+  require_installed_target_ssh_key_tooling
+
+  key_dir="$(installed_target_ssh_key_dir "${key_name}")"
+  private_key="$(installed_target_ssh_private_key_path "${key_name}")"
+  public_key="$(installed_target_ssh_public_key_path_for_name "${key_name}")"
+
+  mkdir -p "${OURBOX_INSTALLED_TARGET_SSH_KEYSTORE_ROOT}"
+
+  if [[ -f "${private_key}" || -f "${public_key}" ]]; then
+    [[ -f "${private_key}" && -f "${public_key}" ]] \
+      || die "installed-target SSH key '${key_name}' is incomplete under ${key_dir}"
+    return 0
+  fi
+
+  mkdir -p "${key_dir}"
+  chmod 0700 "${key_dir}"
+  comment="${key_name}@$(hostname -s 2>/dev/null || hostname)"
+  ssh-keygen -q -t ed25519 -N "" -C "${comment}" -f "${private_key}" >/dev/null
+  chmod 0600 "${private_key}"
+  chmod 0644 "${public_key}"
+}
+
+select_installed_target_ssh_key_by_name() {
+  local key_name="$1"
+
+  ensure_installed_target_ssh_key_exists "${key_name}"
+  SELECTED_INSTALLED_TARGET_SSH_MODE="host-generated-authorized-key"
+  SELECTED_INSTALLED_TARGET_SSH_KEY_NAME="${key_name}"
+  SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_PATH="$(installed_target_ssh_public_key_path_for_name "${key_name}")"
+  SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_FINGERPRINT="$(installed_target_ssh_public_key_fingerprint "${SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_PATH}")"
+  [[ "${SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_FINGERPRINT}" =~ ^SHA256:[A-Za-z0-9+/=]+$ ]] \
+    || die "failed to derive a valid fingerprint for installed-target SSH key '${key_name}'"
+  SELECTED_INSTALLED_TARGET_SSH_KEY_TYPE="ssh-ed25519"
+}
+
+render_installed_target_ssh_key_inventory() {
+  local key_name="$1"
+  local public_key=""
+  local fingerprint=""
+
+  public_key="$(installed_target_ssh_public_key_path_for_name "${key_name}")"
+  fingerprint="$(installed_target_ssh_public_key_fingerprint "${public_key}")"
+  printf '%-24s %s\n' "${key_name}" "${fingerprint:-unknown}"
+}
+
+delete_installed_target_ssh_key_by_name() {
+  local key_name="$1"
+  local key_dir=""
+
+  installed_target_ssh_key_name_is_valid "${key_name}" \
+    || die "invalid installed-target SSH key name: ${key_name}"
+  key_dir="$(installed_target_ssh_key_dir "${key_name}")"
+  [[ -d "${key_dir}" ]] || die "installed-target SSH key not found: ${key_name}"
+  rm -rf "${key_dir}"
+  if [[ "${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME}" == "${key_name}" ]]; then
+    disable_installed_target_ssh_key_selection
+  fi
+}
+
+delete_all_installed_target_ssh_keys() {
+  rm -rf "${OURBOX_INSTALLED_TARGET_SSH_KEYSTORE_ROOT}"
+  disable_installed_target_ssh_key_selection
+}
+
+show_installed_target_ssh_key_panel() {
+  local -a key_names=("$@")
+  local idx=0
+
+  echo
+  echo "Host-side reusable installed-system SSH keys"
+  if [[ -n "${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME}" ]]; then
+    echo "Selected: ${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME} (${SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_FINGERPRINT})"
+  else
+    echo "Selected: disabled"
+  fi
+  echo "Store   : ${OURBOX_INSTALLED_TARGET_SSH_KEYSTORE_ROOT}"
+  echo
+  if (( ${#key_names[@]} > 0 )); then
+    printf '  %-3s %-24s %s\n' "#" "Key name" "Fingerprint"
+    for idx in "${!key_names[@]}"; do
+      printf '  %-3s ' "$((idx + 1))"
+      render_installed_target_ssh_key_inventory "${key_names[$idx]}"
+    done
+  else
+    echo "  No stored installed-target SSH keys."
+  fi
+  echo
+  echo "Options:"
+  echo "  [ENTER] Keep installed-target SSH key disabled"
+  if (( ${#key_names[@]} > 0 )); then
+    echo "  [1-${#key_names[@]}] Use an existing named key"
+    echo "  d       Delete a named key"
+    echo "  x       Delete all named keys"
+  fi
+  echo "  n       Create a new named key"
+  echo "  q       Quit"
+  echo
+}
+
+create_installed_target_ssh_key_interactive() {
+  local default_name=""
+  local key_name=""
+
+  default_name="ourbox-$(date -u +%Y%m%d-%H%M%S)"
+  read -r -p "Enter key name [${default_name}]: " key_name
+  key_name="${key_name:-${default_name}}"
+  if ! installed_target_ssh_key_name_is_valid "${key_name}"; then
+    log "Key name must match [A-Za-z0-9][A-Za-z0-9._-]{0,63}."
+    return 1
+  fi
+  select_installed_target_ssh_key_by_name "${key_name}"
+}
+
+delete_installed_target_ssh_key_interactive() {
+  local -a key_names=("$@")
+  local pick=""
+  local idx=0
+
+  (( ${#key_names[@]} > 0 )) || return 1
+  read -r -p "Enter key number to delete (or ENTER to cancel): " pick
+  [[ -n "${pick}" ]] || return 1
+  [[ "${pick}" =~ ^[0-9]+$ ]] || {
+    log "Invalid selection."
+    return 1
+  }
+  idx=$((pick - 1))
+  if (( idx < 0 || idx >= ${#key_names[@]} )); then
+    log "Selection out of range."
+    return 1
+  fi
+  delete_installed_target_ssh_key_by_name "${key_names[$idx]}"
+  log "Deleted installed-target SSH key: ${key_names[$idx]}"
+}
+
+delete_all_installed_target_ssh_keys_interactive() {
+  local confirm=""
+
+  read -r -p "Type DELETE-ALL-SSH-KEYS to remove every stored installed-target SSH key: " confirm
+  [[ "${confirm}" == "DELETE-ALL-SSH-KEYS" ]] || {
+    log "Delete-all not confirmed."
+    return 1
+  }
+  delete_all_installed_target_ssh_keys
+  log "Deleted all installed-target SSH keys"
+}
+
+interactive_select_installed_target_ssh_key() {
+  local choice=""
+  local idx=0
+  local -a key_names=()
+
+  disable_installed_target_ssh_key_selection
+
+  while true; do
+    mapfile -t key_names < <(list_installed_target_ssh_key_names)
+    show_installed_target_ssh_key_panel "${key_names[@]}"
+    read -r -p "Choice: " choice
+
+    case "${choice}" in
+      "")
+        disable_installed_target_ssh_key_selection
+        return 0
+        ;;
+      n|N)
+        create_installed_target_ssh_key_interactive && return 0
+        ;;
+      d|D)
+        delete_installed_target_ssh_key_interactive "${key_names[@]}" || true
+        ;;
+      x|X)
+        delete_all_installed_target_ssh_keys_interactive || true
+        ;;
+      q|Q)
+        die "Mission compose aborted by user"
+        ;;
+      *)
+        if [[ ! "${choice}" =~ ^[0-9]+$ ]]; then
+          log "Unknown option."
+          continue
+        fi
+        idx=$((choice - 1))
+        if (( idx < 0 || idx >= ${#key_names[@]} )); then
+          log "Selection out of range."
+          continue
+        fi
+        select_installed_target_ssh_key_by_name "${key_names[$idx]}"
+        return 0
+        ;;
+    esac
+  done
+}
+
+determine_installed_target_ssh_key() {
+  disable_installed_target_ssh_key_selection
+
+  if [[ -n "${INSTALLED_TARGET_SSH_KEY_NAME_REQUEST}" ]]; then
+    select_installed_target_ssh_key_by_name "${INSTALLED_TARGET_SSH_KEY_NAME_REQUEST}"
+    return 0
+  fi
+
+  if interactive_selection_enabled; then
+    interactive_select_installed_target_ssh_key
+  fi
 }
 
 show_target_default_choice() {
@@ -178,6 +467,11 @@ while [[ $# -gt 0 ]]; do
     --app-ids)
       [[ $# -ge 2 ]] || die "--app-ids requires a value"
       APP_IDS="$2"
+      shift 2
+      ;;
+    --installed-target-ssh-key-name)
+      [[ $# -ge 2 ]] || die "--installed-target-ssh-key-name requires a value"
+      INSTALLED_TARGET_SSH_KEY_NAME_REQUEST="$2"
       shift 2
       ;;
     --output-dir)
@@ -2669,6 +2963,7 @@ prepare_merged_application_catalog "catalog-defaults" "[]"
 determine_application_selection
 prepare_merged_application_catalog "${SELECTED_APPLICATION_SELECTION_MODE}" "${SELECTED_APPLICATION_IDS_JSON}"
 log_application_catalog_merge_summary
+determine_installed_target_ssh_key
 
 cache_pull_oci_artifact "${SELECTED_INSTALLER_SUBSTRATE_REF}" "${CACHE_REUSE_ENABLED}" INSTALLER_SUBSTRATE_CACHE_DIR
 SELECTED_INSTALLER_SUBSTRATE_DIGEST="${OURBOX_CACHE_LAST_DIGEST}"
@@ -2689,6 +2984,7 @@ STAGING_OUTPUT_DIR="${TMP_ROOT}/prepared-output"
 MISSION_DIR="${STAGING_OUTPUT_DIR}/mission"
 OS_STAGE_DIR="${MISSION_DIR}/artifacts/os"
 AIRGAP_STAGE_DIR="${MISSION_DIR}/artifacts/airgap"
+INSTALLED_TARGET_SSH_STAGE_DIR="${MISSION_DIR}/artifacts/installed-target-ssh"
 mkdir -p "${OS_STAGE_DIR}" "${AIRGAP_STAGE_DIR}"
 
 cp -f "${OS_PAYLOAD}" "${OS_STAGE_DIR}/os-payload.tar.gz"
@@ -2700,6 +2996,10 @@ synthesize_selected_application_bundle
 if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
   cp -f "${MERGED_APPLICATION_CATALOG_FILE}" "${AIRGAP_STAGE_DIR}/catalog.json"
   cp -f "${MERGED_SELECTED_APPLICATIONS_FILE}" "${AIRGAP_STAGE_DIR}/selected-apps.json"
+fi
+if [[ -n "${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME}" ]]; then
+  mkdir -p "${INSTALLED_TARGET_SSH_STAGE_DIR}"
+  cp -f "${SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_PATH}" "${INSTALLED_TARGET_SSH_STAGE_DIR}/authorized-key.pub"
 fi
 
 export MISSION_DIR COMPOSE_ID COMPOSED_AT TARGET COMPOSER_REVISION ADAPTER_SOURCE_REPO ADAPTER_SOURCE_REVISION
@@ -2713,6 +3013,8 @@ export SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST SELECTED_AIRGAP_ARCH SELECTED_AI
 export SELECTED_AIRGAP_IMAGES_LOCK_SHA256 MISSION_ONLY BAKED_AIRGAP_DIGEST
 export APPLICATION_CATALOG_PRESENT APPLICATION_CATALOG_ID APPLICATION_CATALOG_NAME APPLICATION_CATALOG_DESCRIPTION
 export SELECTED_APPLICATION_SELECTION_MODE SELECTED_APPLICATION_IDS_JSON MERGED_APPLICATION_SUMMARY_FILE
+export SELECTED_INSTALLED_TARGET_SSH_MODE SELECTED_INSTALLED_TARGET_SSH_KEY_NAME
+export SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_FINGERPRINT SELECTED_INSTALLED_TARGET_SSH_KEY_TYPE
 
 python3 - <<'PY'
 import hashlib
@@ -2727,6 +3029,7 @@ airgap_payload = mission_dir / "artifacts" / "airgap" / "airgap-platform.tar.gz"
 airgap_manifest = mission_dir / "artifacts" / "airgap" / "manifest.env"
 application_catalog = mission_dir / "artifacts" / "airgap" / "catalog.json"
 selected_apps = mission_dir / "artifacts" / "airgap" / "selected-apps.json"
+installed_target_ssh_key = mission_dir / "artifacts" / "installed-target-ssh" / "authorized-key.pub"
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -2845,6 +3148,15 @@ if os.environ.get("APPLICATION_CATALOG_PRESENT") == "1":
         "source_catalogs": source_catalogs,
     }
 
+if os.environ.get("SELECTED_INSTALLED_TARGET_SSH_MODE") == "host-generated-authorized-key":
+    manifest["installed_target_ssh"] = {
+        "mode": os.environ["SELECTED_INSTALLED_TARGET_SSH_MODE"],
+        "key_name": os.environ["SELECTED_INSTALLED_TARGET_SSH_KEY_NAME"],
+        "authorized_key_relpath": installed_target_ssh_key.relative_to(mission_dir).as_posix(),
+        "key_type": os.environ["SELECTED_INSTALLED_TARGET_SSH_KEY_TYPE"],
+        "public_key_fingerprint": os.environ["SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_FINGERPRINT"],
+    }
+
 with (mission_dir / "mission-manifest.json").open("w", encoding="utf-8") as handle:
     json.dump(manifest, handle, indent=2)
     handle.write("\n")
@@ -2861,6 +3173,9 @@ log "Selected application catalogs: ${SELECTED_APPLICATION_CATALOG_SOURCE_DISPLA
 log "Synthesized application bundle: ${SELECTED_AIRGAP_PINNED_REF} (${SELECTED_AIRGAP_SELECTION_SOURCE})"
 if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
   log "Selected applications: ${SELECTED_APPLICATION_IDS_DISPLAY} (${SELECTED_APPLICATION_SELECTION_MODE})"
+fi
+if [[ -n "${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME}" ]]; then
+  log "Installed-target SSH key: ${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME} (${SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_FINGERPRINT})"
 fi
 log "Selected installer substrate: ${SELECTED_INSTALLER_SUBSTRATE_PINNED_REF} (${SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL})"
 

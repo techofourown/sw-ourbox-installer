@@ -26,6 +26,7 @@ jobs:
           bash -n tools/check-flash-first-policy-smoke.sh
           bash -n tools/check-merged-catalog-determinism-smoke.sh
           bash -n tools/check-host-composed-selected-app-bundle-smoke.sh
+          bash -n tools/check-installed-target-ssh-keyring-smoke.sh
           bash -n tools/check-interactive-selection-smoke.sh
           bash -n tools/check-multi-catalog-selection-smoke.sh
           bash -n tools/check-published-catalog-bundles-smoke.sh
@@ -77,6 +78,9 @@ jobs:
 
       - name: Host-composed selected-app bundle smoke
         run: bash tools/check-host-composed-selected-app-bundle-smoke.sh
+
+      - name: Installed-target SSH keyring smoke
+        run: bash tools/check-installed-target-ssh-keyring-smoke.sh
 
       - name: Interactive selection smoke
         run: bash tools/check-interactive-selection-smoke.sh

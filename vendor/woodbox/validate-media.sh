@@ -86,6 +86,8 @@ expected_arch = adapter["expected_airgap_arch"]
 sha256_re = re.compile(r"^sha256:[0-9a-f]{64}$")
 pinned_ref_re = re.compile(r"^[^\s]+@sha256:[0-9a-f]{64}$")
 plain_sha256_re = re.compile(r"^[0-9a-f]{64}$")
+key_name_re = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+ssh_fingerprint_re = re.compile(r"^SHA256:[A-Za-z0-9+/=]+$")
 
 
 def ensure_relpath_within_mission(label: str, relpath: str) -> pathlib.Path:
@@ -137,6 +139,14 @@ def validate_sha256_sidecar(label: str, payload_relpath: str, payload_path: path
     actual = sha256_file(payload_path)
     if actual != expected:
         raise SystemExit(f"{label}.sha256 does not match {label}")
+
+
+def validate_authorized_key_file(label: str, path: pathlib.Path) -> None:
+    lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if len(lines) != 1:
+        raise SystemExit(f"{label} must contain exactly one non-empty SSH public key line")
+    if not lines[0].startswith("ssh-ed25519 "):
+        raise SystemExit(f"{label} must contain an ssh-ed25519 public key")
 
 
 def normalize_tar_member_name(name: str) -> str:
@@ -362,6 +372,31 @@ airgap_payload_path = require_staged_file("mission selected_airgap.payload_relpa
 airgap_manifest_path = require_staged_file("mission selected_airgap.manifest_relpath", manifest_relpath)
 validate_sha256_sidecar("mission selected_airgap.payload.relpath", payload_relpath, airgap_payload_path)
 validate_airgap_bundle(airgap_payload_path, airgap_manifest_path, airgap_contract)
+
+installed_target_ssh = manifest.get("installed_target_ssh")
+if installed_target_ssh is not None:
+    if not isinstance(installed_target_ssh, dict) or not installed_target_ssh:
+        raise SystemExit("mission installed_target_ssh must be an object when present")
+    mode = str(installed_target_ssh.get("mode", ""))
+    key_name = str(installed_target_ssh.get("key_name", ""))
+    authorized_key_relpath = str(installed_target_ssh.get("authorized_key_relpath", ""))
+    key_type = str(installed_target_ssh.get("key_type", ""))
+    public_key_fingerprint = str(installed_target_ssh.get("public_key_fingerprint", ""))
+    if mode != "host-generated-authorized-key":
+        raise SystemExit("mission installed_target_ssh.mode must be 'host-generated-authorized-key'")
+    if not key_name_re.fullmatch(key_name):
+        raise SystemExit("mission installed_target_ssh.key_name must match the supported key-name pattern")
+    if not authorized_key_relpath:
+        raise SystemExit("mission installed_target_ssh.authorized_key_relpath must be set")
+    if key_type != "ssh-ed25519":
+        raise SystemExit("mission installed_target_ssh.key_type must be 'ssh-ed25519'")
+    if not ssh_fingerprint_re.fullmatch(public_key_fingerprint):
+        raise SystemExit("mission installed_target_ssh.public_key_fingerprint must be a SHA256 SSH fingerprint")
+    authorized_key_path = require_staged_file(
+        "mission installed_target_ssh.authorized_key_relpath",
+        authorized_key_relpath,
+    )
+    validate_authorized_key_file("mission installed_target_ssh.authorized_key_relpath", authorized_key_path)
 
 selected_applications = manifest.get("selected_applications")
 if selected_applications is not None:

@@ -13,10 +13,11 @@ trap 'rm -rf "${TMP}"' EXIT
 MISSION_DIR="${TMP}/mission"
 OS_DIR="${MISSION_DIR}/artifacts/os"
 AIRGAP_DIR="${MISSION_DIR}/artifacts/airgap"
+SSH_DIR="${MISSION_DIR}/artifacts/installed-target-ssh"
 AIRGAP_SOURCE_DIR="${TMP}/airgap-source"
 SUBSTRATE_TREE="${TMP}/substrate-tree"
 BOOT_DIR="${TMP}/boot-images"
-mkdir -p "${OS_DIR}" "${AIRGAP_DIR}" "${AIRGAP_SOURCE_DIR}/k3s" "${AIRGAP_SOURCE_DIR}/platform/images" \
+mkdir -p "${OS_DIR}" "${AIRGAP_DIR}" "${SSH_DIR}" "${AIRGAP_SOURCE_DIR}/k3s" "${AIRGAP_SOURCE_DIR}/platform/images" \
   "${SUBSTRATE_TREE}/boot/grub/i386-pc" "${SUBSTRATE_TREE}/nocloud" "${SUBSTRATE_TREE}/ourbox/installer" \
   "${SUBSTRATE_TREE}/ourbox/tools" "${BOOT_DIR}"
 
@@ -77,6 +78,7 @@ printf 'fixture image tar\n' > "${AIRGAP_SOURCE_DIR}/platform/images/platform-de
 tar -C "${AIRGAP_SOURCE_DIR}" -czf "${AIRGAP_DIR}/airgap-platform.tar.gz" k3s platform manifest.env
 printf '%s  %s\n' "$(sha256sum "${AIRGAP_DIR}/airgap-platform.tar.gz" | awk '{print $1}')" "airgap-platform.tar.gz" > "${AIRGAP_DIR}/airgap-platform.tar.gz.sha256"
 cp -f "${AIRGAP_SOURCE_DIR}/manifest.env" "${AIRGAP_DIR}/manifest.env"
+printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFM7xJ0oE1W8rQx6wH4M7dQf3J6pV8nX2kL4cR5sT6u7 fixture@host\n' > "${SSH_DIR}/authorized-key.pub"
 
 cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
 {
@@ -154,6 +156,13 @@ cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
     "manifest_relpath": "artifacts/airgap/manifest.env",
     "images_lock_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     "present_in_selected_os_payload": true
+  },
+  "installed_target_ssh": {
+    "mode": "host-generated-authorized-key",
+    "key_name": "fixture-shared-dev",
+    "authorized_key_relpath": "artifacts/installed-target-ssh/authorized-key.pub",
+    "key_type": "ssh-ed25519",
+    "public_key_fingerprint": "SHA256:fixtureFingerprint0123456789abcdef=="
   },
   "staged_files": [
     {
