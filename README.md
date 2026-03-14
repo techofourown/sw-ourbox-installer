@@ -63,9 +63,12 @@ When run from a terminal, the host composer now mirrors the old installer UX:
   - `ENTER` uses the merged default app set
   - `a` installs all apps from the merged catalog
   - `c` chooses a custom app set by number
-- after application selection, it offers an installed-system SSH key step:
-  - `ENTER` keeps installed-target SSH key auth disabled
-  - pick an existing named key to reuse it across installs and target families
+- after application selection, it asks whether you want to stage installed-target
+  SSH access at all:
+  - `ENTER` or `n` continues without any installed-target SSH key
+  - `y` opens the named-key chooser
+  - in the named-key chooser, pick an existing named key to reuse it across
+    installs and target families
   - `n` creates a new named key
   - `d` deletes one named key
   - `x` deletes all named keys
@@ -104,6 +107,9 @@ Cache behavior:
 
 Installed-target SSH behavior:
 
+- host-side installed-target SSH staging is optional
+- if you skip it, compose still continues and the mission carries no staged
+  installed-target SSH key
 - named host-side SSH keys are stored in `${XDG_STATE_HOME:-$HOME/.local/state}/ourbox/installed-target-ssh-keys` by default
 - the staged mission carries only the selected public key, never the private key
 - the installed target can use that staged host key for key-based SSH
