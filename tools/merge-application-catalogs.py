@@ -11,7 +11,7 @@ def sanitize_token(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "app"
 
 
-def load_json(path: Path) -> dict:
+def load_json(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -108,25 +108,56 @@ def app_signature(app: dict, resolved_images: list[dict]) -> str:
     return json.dumps(comparable, sort_keys=True)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Merge one or more application catalogs into a host-selected effective catalog.")
-    parser.add_argument("--sources-json", required=True)
-    parser.add_argument("--selection-mode", required=True, choices=["catalog-defaults", "all-apps", "custom"])
-    parser.add_argument("--selected-app-ids", default="")
-    parser.add_argument("--out-catalog", required=True)
-    parser.add_argument("--out-selected-apps", required=True)
-    parser.add_argument("--out-images-lock", required=True)
-    parser.add_argument("--out-summary", required=True)
-    args = parser.parse_args()
+def parse_source_resolutions(raw_value: str) -> dict[str, str]:
+    if not raw_value.strip():
+        return {}
+    parsed = json.loads(raw_value)
+    if not isinstance(parsed, dict):
+        raise SystemExit("--source-resolutions-json must be a JSON object")
 
-    sources_path = Path(args.sources_json).resolve()
-    sources = load_json(sources_path)
-    if not isinstance(sources, list) or not sources:
-        raise SystemExit(f"{sources_path} must declare a non-empty source catalog list")
+    resolutions: dict[str, str] = {}
+    for raw_app_uid, raw_catalog_id in parsed.items():
+        app_uid = str(raw_app_uid).strip()
+        catalog_id = str(raw_catalog_id).strip()
+        if not app_uid or not catalog_id:
+            raise SystemExit("source resolution entries must map non-empty app_uids to non-empty catalog_ids")
+        resolutions[app_uid] = catalog_id
+    return resolutions
 
-    merged_by_uid: dict[str, dict] = {}
+
+def build_source_catalogs(sources: list[dict]) -> tuple[list[dict], dict[tuple[str, str, str], int]]:
+    canonical_source_catalogs: list[dict] = []
+    seen_catalog_ids: set[str] = set()
+    for source in sources:
+        catalog_id = str(source.get("catalog_id", "")).strip()
+        catalog_name = str(source.get("catalog_name", "")).strip()
+        artifact_ref = str(source.get("artifact_ref", "")).strip()
+        artifact_digest = str(source.get("artifact_digest", "")).strip()
+        if not catalog_id or not catalog_name or not artifact_ref or not artifact_digest:
+            raise SystemExit("source catalog entries must declare catalog_id, catalog_name, artifact_ref, and artifact_digest")
+        if catalog_id in seen_catalog_ids:
+            raise SystemExit(
+                f"sources list declares duplicate catalog_id {catalog_id!r}; select at most one version of each catalog per merge"
+            )
+        seen_catalog_ids.add(catalog_id)
+        canonical_source_catalogs.append(
+            {
+                "catalog_id": catalog_id,
+                "catalog_name": catalog_name,
+                "artifact_ref": artifact_ref,
+                "artifact_digest": artifact_digest,
+            }
+        )
+    canonical_source_catalogs.sort(key=canonical_source_key)
+    canonical_source_positions = {
+        canonical_source_key(source): index for index, source in enumerate(canonical_source_catalogs)
+    }
+    return canonical_source_catalogs, canonical_source_positions
+
+
+def build_candidate_records(sources: list[dict]) -> tuple[dict[str, list[dict]], set[str]]:
+    candidates_by_uid: dict[str, list[dict]] = {}
     merged_defaults: set[str] = set()
-    conflict_records: list[dict] = []
 
     for source_index, source in enumerate(sources):
         catalog_path = Path(source["catalog_path"]).resolve()
@@ -141,16 +172,21 @@ def main() -> int:
         default_ids = [str(item).strip() for item in catalog["default_app_ids"]]
         defaults_set = set(default_ids)
         seen_source_app_uids: set[str] = set()
+        source_meta = {
+            "catalog_id": str(catalog["catalog_id"]).strip(),
+            "catalog_name": str(catalog["catalog_name"]).strip(),
+            "artifact_ref": artifact_ref,
+            "artifact_digest": artifact_digest,
+        }
 
         for app_index, raw_app in enumerate(catalog["apps"]):
             app = dict(raw_app)
             local_app_id = str(app["id"]).strip()
-            app_uid = canonical_app_uid(source, app)
+            app_uid = canonical_app_uid(source_meta, app)
             if app_uid in seen_source_app_uids:
-                raise SystemExit(
-                    f"{catalog_path} contains duplicate canonical app identity {app_uid!r}"
-                )
+                raise SystemExit(f"{catalog_path} contains duplicate canonical app identity {app_uid!r}")
             seen_source_app_uids.add(app_uid)
+
             image_names = app.get("image_names")
             if not isinstance(image_names, list) or not image_names:
                 raise SystemExit(f"{catalog_path} app {local_app_id!r} must declare a non-empty image_names list")
@@ -164,17 +200,8 @@ def main() -> int:
                     )
                 resolved_images.append({"name": lookup, "ref": str(image_by_name[lookup]["ref"])})
 
-            source_meta = {
-                "catalog_id": str(catalog["catalog_id"]),
-                "catalog_name": str(catalog["catalog_name"]),
-                "artifact_ref": artifact_ref,
-                "artifact_digest": artifact_digest,
-            }
-            signature = app_signature(app, resolved_images)
-
-            merged_entry = {
+            candidate = {
                 "app_uid": app_uid,
-                "id": app_uid,
                 "local_app_id": local_app_id,
                 "display_name": str(app.get("display_name", local_app_id)),
                 "description": str(app.get("description", "")),
@@ -187,40 +214,172 @@ def main() -> int:
                 "body_marker": str(app.get("body_marker", "")),
                 "route_description": str(app.get("route_description", app_uid)),
                 "default_backend": bool(app.get("default_backend", False)),
-                "image_names": [],
+                "catalog_id": source_meta["catalog_id"],
+                "catalog_name": source_meta["catalog_name"],
+                "artifact_ref": source_meta["artifact_ref"],
+                "artifact_digest": source_meta["artifact_digest"],
+                "default_selected": local_app_id in defaults_set,
                 "_resolved_images": resolved_images,
-                "_signature": signature,
+                "_signature": app_signature(app, resolved_images),
                 "_source_order": (source_index, app_index),
-                "source_catalog_ids": [source_meta["catalog_id"]],
-                "source_catalog_names": [source_meta["catalog_name"]],
-                "source_artifact_refs": [source_meta["artifact_ref"]],
-                "source_artifact_digests": [source_meta["artifact_digest"]],
             }
-
-            if app_uid not in merged_by_uid:
-                merged_by_uid[app_uid] = merged_entry
-            else:
-                existing = merged_by_uid[app_uid]
-                if existing["_signature"] == signature:
-                    for field_name, field_value in (
-                        ("source_catalog_ids", source_meta["catalog_id"]),
-                        ("source_catalog_names", source_meta["catalog_name"]),
-                        ("source_artifact_refs", source_meta["artifact_ref"]),
-                        ("source_artifact_digests", source_meta["artifact_digest"]),
-                    ):
-                        if field_value not in existing[field_name]:
-                            existing[field_name].append(field_value)
-                else:
-                    conflict_records.append(
-                        {
-                            "app_uid": app_uid,
-                            "kept_catalog_id": existing["source_catalog_ids"][0],
-                            "dropped_catalog_id": source_meta["catalog_id"],
-                            "policy": "first-selected-source-wins",
-                        }
-                    )
+            candidates_by_uid.setdefault(app_uid, []).append(candidate)
             if local_app_id in defaults_set:
                 merged_defaults.add(app_uid)
+
+    return candidates_by_uid, merged_defaults
+
+
+def ordered_candidates(candidates: list[dict]) -> list[dict]:
+    return sorted(candidates, key=lambda item: item["_source_order"])
+
+
+def build_duplicate_report(candidates_by_uid: dict[str, list[dict]]) -> list[dict]:
+    report: list[dict] = []
+    for app_uid in sorted(candidates_by_uid):
+        candidates = ordered_candidates(candidates_by_uid[app_uid])
+        if len(candidates) <= 1:
+            continue
+        signatures = {candidate["_signature"] for candidate in candidates}
+        report.append(
+            {
+                "app_uid": app_uid,
+                "display_name": candidates[0]["display_name"],
+                "definitions_identical": len(signatures) == 1,
+                "candidates": [
+                    {
+                        "catalog_id": candidate["catalog_id"],
+                        "catalog_name": candidate["catalog_name"],
+                        "artifact_ref": candidate["artifact_ref"],
+                        "artifact_digest": candidate["artifact_digest"],
+                        "local_app_id": candidate["local_app_id"],
+                        "display_name": candidate["display_name"],
+                        "description": candidate["description"],
+                        "default_selected": candidate["default_selected"],
+                        "default_backend": candidate["default_backend"],
+                        "resolved_images": candidate["_resolved_images"],
+                    }
+                    for candidate in candidates
+                ],
+            }
+        )
+    return report
+
+
+def render_unresolved_duplicate_error(duplicate_report: list[dict]) -> str:
+    lines = ["duplicate application source choices are required before catalogs can be merged:"]
+    for item in duplicate_report:
+        app_uid = str(item["app_uid"])
+        available = ", ".join(
+            f"{candidate['catalog_id']} ({candidate['catalog_name']})"
+            for candidate in item["candidates"]
+        )
+        lines.append(f"  - {app_uid}: choose one of {available}")
+    return "\n".join(lines)
+
+
+def select_candidate_for_app(
+    app_uid: str,
+    candidates: list[dict],
+    source_resolutions: dict[str, str],
+    used_resolution_keys: set[str],
+    canonical_source_positions: dict[tuple[str, str, str], int],
+) -> tuple[dict, dict | None]:
+    ordered = ordered_candidates(candidates)
+    if len(ordered) == 1:
+        return ordered[0], None
+
+    selected_catalog_id = source_resolutions.get(app_uid, "").strip()
+    if not selected_catalog_id:
+        available = ", ".join(candidate["catalog_id"] for candidate in ordered)
+        raise SystemExit(f"duplicate application source choice required for {app_uid}: choose one of {available}")
+
+    chosen = None
+    for candidate in ordered:
+        if candidate["catalog_id"] == selected_catalog_id:
+            chosen = candidate
+            break
+    if chosen is None:
+        available = ", ".join(candidate["catalog_id"] for candidate in ordered)
+        raise SystemExit(
+            f"invalid source choice for {app_uid}: {selected_catalog_id!r}; expected one of {available}"
+        )
+
+    used_resolution_keys.add(app_uid)
+
+    ordered_sources = sorted(ordered, key=lambda item: canonical_source_positions[canonical_source_key(item)])
+    ordered_sources = [chosen] + [item for item in ordered_sources if item is not chosen]
+    signatures = {candidate["_signature"] for candidate in ordered}
+    conflict_record = {
+        "type": "duplicate-app-source",
+        "app_uid": app_uid,
+        "selected_catalog_id": chosen["catalog_id"],
+        "selected_catalog_name": chosen["catalog_name"],
+        "available_catalog_ids": [candidate["catalog_id"] for candidate in ordered_sources],
+        "available_catalog_names": [candidate["catalog_name"] for candidate in ordered_sources],
+        "definitions_identical": len(signatures) == 1,
+        "policy": "operator-selected-source",
+    }
+    return chosen, conflict_record
+
+
+def build_merged_entries(
+    candidates_by_uid: dict[str, list[dict]],
+    merged_defaults: set[str],
+    source_resolutions: dict[str, str],
+    canonical_source_positions: dict[tuple[str, str, str], int],
+) -> tuple[dict[str, dict], list[dict]]:
+    merged_by_uid: dict[str, dict] = {}
+    conflict_records: list[dict] = []
+    used_resolution_keys: set[str] = set()
+
+    for app_uid in sorted(candidates_by_uid):
+        candidates = ordered_candidates(candidates_by_uid[app_uid])
+        chosen, duplicate_record = select_candidate_for_app(
+            app_uid,
+            candidates,
+            source_resolutions,
+            used_resolution_keys,
+            canonical_source_positions,
+        )
+
+        ordered_sources = sorted(candidates, key=lambda item: canonical_source_positions[canonical_source_key(item)])
+        ordered_sources = [chosen] + [item for item in ordered_sources if item is not chosen]
+
+        merged_by_uid[app_uid] = {
+            "app_uid": app_uid,
+            "id": app_uid,
+            "local_app_id": chosen["local_app_id"],
+            "display_name": chosen["display_name"],
+            "description": chosen["description"],
+            "renderer": chosen["renderer"],
+            "service_name": chosen["service_name"],
+            "service_port": chosen["service_port"],
+            "host_template": chosen["host_template"],
+            "path": chosen["path"],
+            "expected_status": chosen["expected_status"],
+            "body_marker": chosen["body_marker"],
+            "route_description": chosen["route_description"],
+            "default_backend": chosen["default_backend"],
+            "image_names": [],
+            "_resolved_images": chosen["_resolved_images"],
+            "_source_order": chosen["_source_order"],
+            "source_catalog_ids": [candidate["catalog_id"] for candidate in ordered_sources],
+            "source_catalog_names": [candidate["catalog_name"] for candidate in ordered_sources],
+            "source_artifact_refs": [candidate["artifact_ref"] for candidate in ordered_sources],
+            "source_artifact_digests": [candidate["artifact_digest"] for candidate in ordered_sources],
+            "selected_source_catalog_id": chosen["catalog_id"],
+            "selected_source_catalog_name": chosen["catalog_name"],
+        }
+        if duplicate_record is not None:
+            conflict_records.append(duplicate_record)
+
+    unused_resolution_keys = sorted(set(source_resolutions) - used_resolution_keys)
+    if unused_resolution_keys:
+        raise SystemExit(
+            "source choices were provided for apps that are not duplicated in the selected catalogs: "
+            + ", ".join(unused_resolution_keys)
+        )
 
     default_backend_entries = [
         (app_uid, merged_by_uid[app_uid])
@@ -246,54 +405,59 @@ def main() -> int:
     if not merged_defaults:
         raise SystemExit("merged catalogs produced an empty default app set")
 
-    canonical_source_catalogs = sorted(
-        [
-            {
-                "catalog_id": str(source["catalog_id"]),
-                "catalog_name": str(source["catalog_name"]),
-                "artifact_ref": str(source["artifact_ref"]),
-                "artifact_digest": str(source["artifact_digest"]),
-            }
-            for source in sources
-        ],
-        key=canonical_source_key,
+    return merged_by_uid, conflict_records
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Merge one or more application catalogs into a host-selected effective catalog."
     )
-    canonical_source_positions = {
-        canonical_source_key(source): index
-        for index, source in enumerate(canonical_source_catalogs)
-    }
+    parser.add_argument("--sources-json", required=True)
+    parser.add_argument("--analysis-only", action="store_true")
+    parser.add_argument("--selection-mode", choices=["catalog-defaults", "all-apps", "custom"], default="catalog-defaults")
+    parser.add_argument("--selected-app-ids", default="")
+    parser.add_argument("--source-resolutions-json", default="{}")
+    parser.add_argument("--out-duplicates")
+    parser.add_argument("--out-catalog")
+    parser.add_argument("--out-selected-apps")
+    parser.add_argument("--out-images-lock")
+    parser.add_argument("--out-summary")
+    args = parser.parse_args()
+
+    sources_path = Path(args.sources_json).resolve()
+    sources = load_json(sources_path)
+    if not isinstance(sources, list) or not sources:
+        raise SystemExit(f"{sources_path} must declare a non-empty source catalog list")
+
+    canonical_source_catalogs, canonical_source_positions = build_source_catalogs(sources)
+    candidates_by_uid, merged_defaults = build_candidate_records(sources)
+    duplicate_report = build_duplicate_report(candidates_by_uid)
+    if args.out_duplicates:
+        Path(args.out_duplicates).write_text(json.dumps(duplicate_report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if args.analysis_only:
+        if not args.out_duplicates:
+            print(json.dumps(duplicate_report, indent=2, sort_keys=True))
+        return 0
+
+    if not args.out_catalog or not args.out_selected_apps or not args.out_images_lock or not args.out_summary:
+        raise SystemExit("merge mode requires --out-catalog, --out-selected-apps, --out-images-lock, and --out-summary")
+
+    source_resolutions = parse_source_resolutions(args.source_resolutions_json)
+    unresolved_duplicates = [
+        item for item in duplicate_report if str(item["app_uid"]) not in source_resolutions
+    ]
+    if unresolved_duplicates:
+        raise SystemExit(render_unresolved_duplicate_error(unresolved_duplicates))
+
+    merged_by_uid, conflict_records = build_merged_entries(
+        candidates_by_uid,
+        merged_defaults,
+        source_resolutions,
+        canonical_source_positions,
+    )
 
     all_app_uids = sorted(merged_by_uid)
     merged_defaults_list = [app_uid for app_uid in all_app_uids if app_uid in merged_defaults]
-
-    for app_uid in all_app_uids:
-        entry = merged_by_uid[app_uid]
-        zipped_sources = list(
-            zip(
-                entry["source_catalog_ids"],
-                entry["source_catalog_names"],
-                entry["source_artifact_refs"],
-                entry["source_artifact_digests"],
-                strict=True,
-            )
-        )
-        zipped_sources.sort(
-            key=lambda item: canonical_source_positions[
-                canonical_source_key(
-                    {
-                        "catalog_id": item[0],
-                        "artifact_ref": item[2],
-                        "artifact_digest": item[3],
-                    }
-                )
-            ]
-        )
-        entry["source_catalog_ids"] = [item[0] for item in zipped_sources]
-        entry["source_catalog_names"] = [item[1] for item in zipped_sources]
-        entry["source_artifact_refs"] = [item[2] for item in zipped_sources]
-        entry["source_artifact_digests"] = [item[3] for item in zipped_sources]
-
-    conflict_records.sort(key=lambda item: (item["app_uid"], item["kept_catalog_id"], item["dropped_catalog_id"]))
     if args.selection_mode == "catalog-defaults":
         selected_app_ids = list(merged_defaults_list)
     elif args.selection_mode == "all-apps":
@@ -362,11 +526,7 @@ def main() -> int:
         "default_app_ids": merged_defaults_list,
         "source_catalogs": source_catalogs,
         "apps": [
-            {
-                key: value
-                for key, value in merged_by_uid[app_uid].items()
-                if not key.startswith("_")
-            }
+            {key: value for key, value in merged_by_uid[app_uid].items() if not key.startswith("_")}
             for app_uid in all_app_uids
         ],
     }
@@ -379,6 +539,9 @@ def main() -> int:
         "selection_mode": args.selection_mode,
         "selected_app_ids": selected_app_ids,
         "source_catalogs": source_catalogs,
+        "source_resolutions": {
+            app_uid: source_resolutions[app_uid] for app_uid in sorted(source_resolutions)
+        },
     }
 
     merged_images_lock = {
@@ -387,6 +550,13 @@ def main() -> int:
         "images": merged_image_entries,
     }
 
+    conflict_records.sort(
+        key=lambda item: (
+            str(item.get("app_uid", "")),
+            str(item.get("selected_catalog_id", item.get("kept_catalog_id", ""))),
+            str(item.get("dropped_catalog_id", "")),
+        )
+    )
     summary = {
         "merged_catalog_id": merged_catalog_id,
         "merged_catalog_name": merged_catalog_name,
@@ -394,6 +564,10 @@ def main() -> int:
         "all_app_ids": all_app_uids,
         "selected_app_ids": selected_app_ids,
         "source_catalogs": source_catalogs,
+        "source_resolutions": {
+            app_uid: source_resolutions[app_uid] for app_uid in sorted(source_resolutions)
+        },
+        "duplicate_apps": duplicate_report,
         "conflicts": conflict_records,
     }
 

@@ -55,8 +55,11 @@ When run from a terminal, the host composer now mirrors the old installer UX:
 - `r` enters a custom OCI ref
 - `o` overrides the upstream repo/catalog
 - after OS selection, it prompts for one or more application catalogs
-- after the catalogs are chosen, it merges them into one effective catalog and
-  prompts for the applications:
+- if the selected catalogs provide the same app uid from multiple catalogs, it
+  stops and makes the operator choose which catalog should provide that app in
+  the merged catalog
+- after duplicate app sources are resolved, it merges the catalogs into one
+  effective catalog and prompts for the applications:
   - `ENTER` uses the merged default app set
   - `a` installs all apps from the merged catalog
   - `c` chooses a custom app set by number
@@ -85,6 +88,7 @@ Useful flags:
 - `--airgap-ref REF[,REF...]` to choose one or more explicit application catalog bundle refs instead of the interactive picker
 - `--all-apps` to install every app published by the merged catalog set
 - `--app-ids ID[,ID...]` to install an explicit subset of apps from the merged catalog set
+- `--app-source-resolutions APP_UID=CATALOG_ID[,APP_UID=CATALOG_ID...]` to resolve duplicate app sources non-interactively
 - `--installed-target-ssh-key-name NAME` to reuse or create a named host-side SSH key and stage its public key for the installed target
 - `--mission-only` to stage only the mission directory under `./out/<target>` (or `--output-dir`)
 - `--compose-only` to compose installer media to disk under `./out/<target>` (or `--output-dir`) without flashing

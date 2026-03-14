@@ -57,6 +57,7 @@ EOF
 python3 "${ROOT}/tools/merge-application-catalogs.py" \
   --sources-json "${TMP_ROOT}/sources.json" \
   --selection-mode catalog-defaults \
+  --source-resolutions-json '{"techofourown/hello-world":"hello-world"}' \
   --out-catalog "${TMP_ROOT}/merged.catalog.json" \
   --out-selected-apps "${TMP_ROOT}/merged.selected-apps.json" \
   --out-images-lock "${TMP_ROOT}/merged.images.lock.json" \
@@ -77,6 +78,8 @@ if "techofourown/todo-bloom" not in app_ids:
     raise SystemExit("expected merged published catalog to contain todo-bloom")
 if selected["selection_mode"] != "catalog-defaults":
     raise SystemExit(f"unexpected selection mode: {selected['selection_mode']}")
+if selected["source_resolutions"] != {"techofourown/hello-world": "hello-world"}:
+    raise SystemExit(f"unexpected source resolutions payload: {selected['source_resolutions']}")
 if len(summary.get("source_catalogs", [])) != 2:
     raise SystemExit("expected two published source catalogs in summary")
 PY

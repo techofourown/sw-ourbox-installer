@@ -123,6 +123,25 @@ EOF_SOURCES
 python3 "${ROOT}/tools/merge-application-catalogs.py" \
   --sources-json "${TMP_ROOT}/sources.json" \
   --selection-mode catalog-defaults \
+  --out-duplicates "${TMP_ROOT}/duplicates.json" \
+  --out-catalog "${TMP_ROOT}/merged.catalog.json" \
+  --out-selected-apps "${TMP_ROOT}/merged.selected-apps.json" \
+  --out-images-lock "${TMP_ROOT}/merged.images.lock.json" \
+  --out-summary "${TMP_ROOT}/merged.summary.json" >"${TMP_ROOT}/missing-resolution.log" 2>&1 && {
+  echo "expected merge to fail without an explicit duplicate app source choice" >&2
+  exit 1
+}
+
+grep -F "duplicate application source choices are required" "${TMP_ROOT}/missing-resolution.log" >/dev/null || {
+  cat "${TMP_ROOT}/missing-resolution.log" >&2
+  exit 1
+}
+
+python3 "${ROOT}/tools/merge-application-catalogs.py" \
+  --sources-json "${TMP_ROOT}/sources.json" \
+  --selection-mode catalog-defaults \
+  --source-resolutions-json '{"techofourown/hello-world":"catalog-a"}' \
+  --out-duplicates "${TMP_ROOT}/duplicates.json" \
   --out-catalog "${TMP_ROOT}/merged.catalog.json" \
   --out-selected-apps "${TMP_ROOT}/merged.selected-apps.json" \
   --out-images-lock "${TMP_ROOT}/merged.images.lock.json" \
@@ -136,18 +155,22 @@ catalog = json.load(open(sys.argv[1], "r", encoding="utf-8"))
 summary = json.load(open(sys.argv[2], "r", encoding="utf-8"))
 
 app = catalog["apps"][0]
-if app["service_name"] != "hello-world-b":
-    raise SystemExit(f"expected first-selected source to win conflict, got {app['service_name']}")
-if app["body_marker"] != "Hello from B":
-    raise SystemExit(f"expected first-selected source payload to win conflict, got {app['body_marker']}")
+if app["service_name"] != "hello-world-a":
+    raise SystemExit(f"expected explicit source selection to choose catalog-a, got {app['service_name']}")
+if app["body_marker"] != "Hello from A":
+    raise SystemExit(f"expected explicit source selection to choose catalog-a payload, got {app['body_marker']}")
+if app["selected_source_catalog_id"] != "catalog-a":
+    raise SystemExit(f"expected selected_source_catalog_id catalog-a, got {app['selected_source_catalog_id']}")
 conflicts = summary.get("conflicts", [])
 if len(conflicts) != 1:
     raise SystemExit(f"expected one conflict record, got {len(conflicts)}")
 conflict = conflicts[0]
-if conflict["policy"] != "first-selected-source-wins":
+if conflict["policy"] != "operator-selected-source":
     raise SystemExit(f"unexpected conflict policy: {conflict['policy']}")
-if conflict["kept_catalog_id"] != "catalog-b" or conflict["dropped_catalog_id"] != "catalog-a":
-    raise SystemExit(f"unexpected kept/dropped catalogs: {conflict}")
+if conflict["selected_catalog_id"] != "catalog-a":
+    raise SystemExit(f"unexpected selected catalog: {conflict}")
+if conflict["available_catalog_ids"] != ["catalog-a", "catalog-b"]:
+    raise SystemExit(f"unexpected available catalogs: {conflict}")
 PY
 
 printf '[%s] application catalog conflict-policy smoke passed\n' "$(date -Is)"

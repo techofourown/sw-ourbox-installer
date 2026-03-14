@@ -225,9 +225,32 @@ cat > "${TMP_ROOT}/sources.json" <<EOF_SOURCES
 ]
 EOF_SOURCES
 
+APPLICATION_SOURCE_RESOLUTIONS_JSON="{}"
+write_application_catalog_duplicate_report "${TMP_ROOT}/sources.json" "${TMP_ROOT}/duplicates.json"
+duplicate_prompt_output_file="${TMP_ROOT}/duplicate-source-prompt.out"
+require_duplicate_application_source_choices "${TMP_ROOT}/duplicates.json" <<< $'2\n' >"${duplicate_prompt_output_file}"
+duplicate_prompt_output="$(<"${duplicate_prompt_output_file}")"
+[[ "${APPLICATION_SOURCE_RESOLUTIONS_JSON}" == *'"techofourown/hello-world": "hello-world"'* ]] || {
+  echo "expected duplicate application source prompt to record the chosen source catalog" >&2
+  exit 1
+}
+[[ "${duplicate_prompt_output}" == *"Duplicate application source selection"* ]] || {
+  echo "expected duplicate application source prompt header in interactive output" >&2
+  exit 1
+}
+[[ "${duplicate_prompt_output}" == *"1) Demo Application Catalog (demo-apps)"* ]] || {
+  echo "expected duplicate application source prompt to show the first source catalog" >&2
+  exit 1
+}
+[[ "${duplicate_prompt_output}" == *"2) Hello World Catalog (hello-world)"* ]] || {
+  echo "expected duplicate application source prompt to show the second source catalog" >&2
+  exit 1
+}
+
 python3 "${ROOT}/tools/merge-application-catalogs.py" \
   --sources-json "${TMP_ROOT}/sources.json" \
   --selection-mode catalog-defaults \
+  --source-resolutions-json "${APPLICATION_SOURCE_RESOLUTIONS_JSON}" \
   --out-catalog "${TMP_ROOT}/merged.catalog.json" \
   --out-selected-apps "${TMP_ROOT}/merged.selected-apps.json" \
   --out-images-lock "${TMP_ROOT}/merged.images.lock.json" \
@@ -248,6 +271,8 @@ if "techofourown/landing" not in app_ids:
     raise SystemExit("expected merged catalog to keep the unique landing app")
 if selected["selected_app_ids"] != ["techofourown/hello-world", "techofourown/landing"]:
     raise SystemExit("expected merged default app ids to be deterministic and deduped")
+if selected["source_resolutions"] != {"techofourown/hello-world": "hello-world"}:
+    raise SystemExit(f"unexpected source resolution payload: {selected['source_resolutions']}")
 if len(images["images"]) != 2:
     raise SystemExit("expected merged images lock to contain deduped selected images")
 PY
@@ -256,6 +281,7 @@ python3 "${ROOT}/tools/merge-application-catalogs.py" \
   --sources-json "${TMP_ROOT}/sources.json" \
   --selection-mode custom \
   --selected-app-ids "techofourown/hello-world" \
+  --source-resolutions-json "${APPLICATION_SOURCE_RESOLUTIONS_JSON}" \
   --out-catalog "${TMP_ROOT}/custom.catalog.json" \
   --out-selected-apps "${TMP_ROOT}/custom.selected-apps.json" \
   --out-images-lock "${TMP_ROOT}/custom.images.lock.json" \
