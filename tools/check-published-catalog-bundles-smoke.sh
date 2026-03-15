@@ -12,6 +12,9 @@ need_cmd tar
 need_cmd python3
 need_cmd sha256sum
 
+DEMO_CATALOG_REF="${DEMO_CATALOG_REF:-ghcr.io/techofourown/sw-ourbox-catalog-demo:latest}"
+HELLO_WORLD_CATALOG_REF="${HELLO_WORLD_CATALOG_REF:-ghcr.io/techofourown/sw-ourbox-catalog-hello-world:latest}"
+
 pull_bundle() {
   local ref="$1"
   local out_dir="$2"
@@ -28,26 +31,44 @@ pull_bundle() {
   [[ -f "${out_dir}/extract/images.lock.json" ]] || die "published bundle missing images.lock.json after extract: ${ref}"
   [[ -f "${out_dir}/extract/profile.env" ]] || die "published bundle missing profile.env after extract: ${ref}"
   [[ -f "${out_dir}/extract/manifest.env" ]] || die "published bundle missing manifest.env after extract: ${ref}"
+
+  python3 - <<'PY' "${out_dir}/extract/manifest.env"
+import re
+import sys
+from pathlib import Path
+
+manifest = {}
+for raw_line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+    line = raw_line.strip()
+    if not line or line.startswith("#"):
+        continue
+    key, value = line.split("=", 1)
+    manifest[key] = value
+
+digest = str(manifest.get("OURBOX_PLATFORM_CONTRACT_DIGEST", "")).strip()
+if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+    raise SystemExit("published catalog bundle manifest is missing a valid OURBOX_PLATFORM_CONTRACT_DIGEST")
+PY
 }
 
-pull_bundle "ghcr.io/techofourown/sw-ourbox-catalog-demo:latest" "${TMP_ROOT}/demo"
-pull_bundle "ghcr.io/techofourown/sw-ourbox-catalog-hello-world:latest" "${TMP_ROOT}/hello"
+pull_bundle "${DEMO_CATALOG_REF}" "${TMP_ROOT}/demo"
+pull_bundle "${HELLO_WORLD_CATALOG_REF}" "${TMP_ROOT}/hello"
 
 cat > "${TMP_ROOT}/sources.json" <<EOF
 [
   {
     "catalog_id": "demo-apps",
     "catalog_name": "Demo Application Catalog",
-    "artifact_ref": "ghcr.io/techofourown/sw-ourbox-catalog-demo:latest",
-    "artifact_digest": "$(oras resolve ghcr.io/techofourown/sw-ourbox-catalog-demo:latest)",
+    "artifact_ref": "${DEMO_CATALOG_REF}",
+    "artifact_digest": "$(oras resolve "${DEMO_CATALOG_REF}")",
     "catalog_path": "${TMP_ROOT}/demo/extract/catalog.json",
     "images_lock_path": "${TMP_ROOT}/demo/extract/images.lock.json"
   },
   {
     "catalog_id": "hello-world",
     "catalog_name": "Hello World Catalog",
-    "artifact_ref": "ghcr.io/techofourown/sw-ourbox-catalog-hello-world:latest",
-    "artifact_digest": "$(oras resolve ghcr.io/techofourown/sw-ourbox-catalog-hello-world:latest)",
+    "artifact_ref": "${HELLO_WORLD_CATALOG_REF}",
+    "artifact_digest": "$(oras resolve "${HELLO_WORLD_CATALOG_REF}")",
     "catalog_path": "${TMP_ROOT}/hello/extract/catalog.json",
     "images_lock_path": "${TMP_ROOT}/hello/extract/images.lock.json"
   }
