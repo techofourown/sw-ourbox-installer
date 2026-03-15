@@ -6,6 +6,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${ROOT}/tools/lib.sh"
 
 : "${OURBOX_INSTALLER_CACHE_ROOT:=${ROOT}/cache}"
+OURBOX_CACHE_REF_ALIAS_LAYOUT_VERSION="2"
 OURBOX_CACHE_LAST_DIGEST=""
 OURBOX_CACHE_LAST_PINNED_REF=""
 
@@ -18,6 +19,34 @@ cache_alias_dir() {
   printf '%s/ref-aliases/%s\n' "${OURBOX_INSTALLER_CACHE_ROOT}" "$(cache_alias_key "${ref}")"
 }
 
+cache_alias_layout_version_file() {
+  printf '%s/ref-aliases/.layout-version\n' "${OURBOX_INSTALLER_CACHE_ROOT}"
+}
+
+cache_migrate_ref_alias_layout() {
+  local alias_root="${OURBOX_INSTALLER_CACHE_ROOT}/ref-aliases"
+  local version_file=""
+  local version=""
+
+  [[ -d "${alias_root}" ]] || return 0
+
+  version_file="$(cache_alias_layout_version_file)"
+  if [[ -f "${version_file}" ]]; then
+    version="$(<"${version_file}")"
+    [[ "${version}" == "${OURBOX_CACHE_REF_ALIAS_LAYOUT_VERSION}" ]] && return 0
+  fi
+
+  rm -rf "${alias_root}"
+}
+
+cache_write_ref_alias_layout_version() {
+  local version_file=""
+
+  version_file="$(cache_alias_layout_version_file)"
+  mkdir -p "$(dirname "${version_file}")"
+  printf '%s\n' "${OURBOX_CACHE_REF_ALIAS_LAYOUT_VERSION}" > "${version_file}"
+}
+
 cache_record_ref_alias() {
   local ref="$1"
   local pinned_ref="$2"
@@ -25,6 +54,7 @@ cache_record_ref_alias() {
   local alias_dir=""
 
   alias_dir="$(cache_alias_dir "${ref}")"
+  cache_write_ref_alias_layout_version
   mkdir -p "${alias_dir}"
   printf '%s\n' "${ref}" > "${alias_dir}/source-ref.txt"
   printf '%s\n' "${pinned_ref}" > "${alias_dir}/pinned-ref.txt"
@@ -62,8 +92,10 @@ cache_has_cached_ref() {
 
   if is_pinned_ref "${ref}"; then
     digest="${ref##*@}"
+    OURBOX_CACHE_LAST_DIGEST="${digest}"
+    OURBOX_CACHE_LAST_PINNED_REF="${ref}"
   else
-    cache_lookup_ref_alias "${ref}" || return 1
+    resolve_ref_with_cache_policy "${ref}" "0" || return 1
     digest="${OURBOX_CACHE_LAST_DIGEST}"
   fi
 
@@ -81,7 +113,7 @@ cache_clear_all() {
 
 resolve_ref_with_cache_policy() {
   local ref="$1"
-  local reuse_cache="$2"
+  local _reuse_cache="${2:-0}"
   local digest=""
   local repo_base=""
 
@@ -90,12 +122,6 @@ resolve_ref_with_cache_policy() {
     OURBOX_CACHE_LAST_DIGEST="${digest}"
     OURBOX_CACHE_LAST_PINNED_REF="${ref}"
     return 0
-  fi
-
-  if [[ "${reuse_cache}" == "1" ]]; then
-    if cache_lookup_ref_alias "${ref}"; then
-      return 0
-    fi
   fi
 
   need_cmd oras
@@ -167,3 +193,5 @@ cache_pull_oci_artifact() {
   fi
   die "failed to cache OCI artifact: ${ref}"
 }
+
+cache_migrate_ref_alias_layout

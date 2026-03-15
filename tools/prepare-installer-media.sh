@@ -724,6 +724,7 @@ maybe_confirm_cache_reuse() {
   local label="$1"
   shift
   local ref=""
+  local cache_display=""
   local -a cached_refs=()
 
   if (( CACHE_REUSE_DECISION_MADE )); then
@@ -733,7 +734,11 @@ maybe_confirm_cache_reuse() {
   for ref in "$@"; do
     [[ -n "${ref}" ]] || continue
     if cache_has_cached_ref "${ref}"; then
-      cached_refs+=("${ref}")
+      cache_display="${ref}"
+      if [[ "${OURBOX_CACHE_LAST_PINNED_REF}" != "${ref}" ]]; then
+        cache_display="${ref} -> ${OURBOX_CACHE_LAST_PINNED_REF}"
+      fi
+      cached_refs+=("${cache_display}")
     fi
   done
 
@@ -748,12 +753,12 @@ maybe_confirm_cache_reuse() {
       ;;
     ask)
       echo
-      echo "Cached installer assets are available for ${label}:"
+      echo "Cached installer assets are available for the current resolved digests for ${label}:"
       for ref in "${cached_refs[@]}"; do
         echo "  - ${ref}"
       done
       echo
-      if prompt_yes_no_default_no "Reuse cached assets where available for this compose?"; then
+      if prompt_yes_no_default_no "Reuse cached bytes when the current resolved digest is already cached?"; then
         CACHE_REUSE_ENABLED=1
       else
         CACHE_REUSE_ENABLED=0
@@ -767,6 +772,20 @@ maybe_confirm_cache_reuse() {
   else
     log "Cache reuse declined for ${label}; pulling fresh bytes where needed"
   fi
+}
+
+log_resolved_artifact_ref() {
+  local label="$1"
+  local requested_ref="$2"
+  local pinned_ref="$3"
+
+  [[ -n "${requested_ref}" && -n "${pinned_ref}" ]] || return 0
+  if [[ "${requested_ref}" == "${pinned_ref}" ]]; then
+    log "${label}: ${pinned_ref}"
+    return 0
+  fi
+
+  log "Resolved ${label} ${requested_ref} -> ${pinned_ref}"
 }
 
 offer_cache_cleanup() {
@@ -2912,6 +2931,7 @@ prepare_merged_application_catalog() {
     cache_pull_oci_artifact "${requested_artifact_ref}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir
     pinned_digest="${OURBOX_CACHE_LAST_DIGEST}"
     pinned_ref="${OURBOX_CACHE_LAST_PINNED_REF}"
+    log_resolved_artifact_ref "application catalog" "${requested_artifact_ref}" "${pinned_ref}"
 
     bundle_tarball="$(find_pulled_file "${catalog_cache_dir}" "application-catalog-bundle.tar.gz")"
     [[ -f "${bundle_tarball}" ]] || die "cached application catalog bundle missing application-catalog-bundle.tar.gz: ${catalog_cache_dir}"
@@ -3228,6 +3248,7 @@ maybe_confirm_cache_reuse "the selected OS artifact" "${SELECTED_OS_REF}"
 cache_pull_oci_artifact "${SELECTED_OS_REF}" "${CACHE_REUSE_ENABLED}" OS_CACHE_DIR
 SELECTED_OS_DIGEST="${OURBOX_CACHE_LAST_DIGEST}"
 SELECTED_OS_PINNED_REF="${OURBOX_CACHE_LAST_PINNED_REF}"
+log_resolved_artifact_ref "OS artifact" "${SELECTED_OS_REF}" "${SELECTED_OS_PINNED_REF}"
 
 OS_PAYLOAD="$(find_pulled_file "${OS_CACHE_DIR}" "os-payload.tar.gz")"
 OS_PAYLOAD_SHA_FILE="$(find_pulled_file "${OS_CACHE_DIR}" "os-payload.tar.gz.sha256")"
@@ -3360,6 +3381,7 @@ determine_installed_target_ssh_key
 cache_pull_oci_artifact "${SELECTED_INSTALLER_SUBSTRATE_REF}" "${CACHE_REUSE_ENABLED}" INSTALLER_SUBSTRATE_CACHE_DIR
 SELECTED_INSTALLER_SUBSTRATE_DIGEST="${OURBOX_CACHE_LAST_DIGEST}"
 SELECTED_INSTALLER_SUBSTRATE_PINNED_REF="${OURBOX_CACHE_LAST_PINNED_REF}"
+log_resolved_artifact_ref "installer substrate" "${SELECTED_INSTALLER_SUBSTRATE_REF}" "${SELECTED_INSTALLER_SUBSTRATE_PINNED_REF}"
 verify_installer_substrate_cache_dir "${INSTALLER_SUBSTRATE_CACHE_DIR}"
 INSTALLER_SUBSTRATE_ISO="$(find_pulled_file "${INSTALLER_SUBSTRATE_CACHE_DIR}" "installer.iso")"
 [[ -f "${INSTALLER_SUBSTRATE_ISO}" ]] || die "cached installer substrate missing installer.iso: ${INSTALLER_SUBSTRATE_CACHE_DIR}"
