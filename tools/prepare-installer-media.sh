@@ -2898,6 +2898,7 @@ prepare_merged_application_catalog() {
   local bundle_sha=""
   local pinned_ref=""
   local pinned_digest=""
+  local manifest_contract_digest=""
   local catalog_dump=""
   local -a catalog_fields=()
   local index=0
@@ -2933,6 +2934,31 @@ prepare_merged_application_catalog() {
     [[ -f "${extracted_dir}/images.lock.json" ]] || die "application catalog bundle missing images.lock.json: ${pinned_ref}"
     [[ -f "${extracted_dir}/manifest.env" ]] || die "application catalog bundle missing manifest.env: ${pinned_ref}"
     [[ -f "${extracted_dir}/profile.env" ]] || die "application catalog bundle missing profile.env: ${pinned_ref}"
+
+    manifest_contract_digest="$(
+      python3 - <<'PY' "${extracted_dir}/manifest.env"
+import re
+import sys
+from pathlib import Path
+
+digest = ""
+for raw_line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+    line = raw_line.strip()
+    if not line or line.startswith("#"):
+        continue
+    key, value = line.split("=", 1)
+    if key == "OURBOX_PLATFORM_CONTRACT_DIGEST":
+        digest = value.strip()
+        break
+
+if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+    raise SystemExit("application catalog bundle manifest must declare a valid OURBOX_PLATFORM_CONTRACT_DIGEST")
+
+print(digest)
+PY
+    )" || die "failed to parse application catalog bundle manifest metadata: ${pinned_ref}"
+    [[ "${manifest_contract_digest}" == "${PLATFORM_CONTRACT_DIGEST}" ]] \
+      || die "application catalog bundle contract digest mismatch for ${pinned_ref}: expected ${PLATFORM_CONTRACT_DIGEST}, got ${manifest_contract_digest}"
 
     catalog_dump="$(
       python3 - <<'PY' "${extracted_dir}/catalog.json"
