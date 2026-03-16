@@ -57,6 +57,7 @@ select_installed_target_ssh_key_by_name "shared-dev"
 
 MISSION_DIR="${TMP}/mission"
 stage_selected_installed_target_ssh_artifacts "${MISSION_DIR}"
+validate_staged_installed_target_ssh_artifacts "${MISSION_DIR}"
 [[ -f "${MISSION_DIR}/artifacts/installed-target-ssh/authorized-key.pub" ]] || {
   echo "expected selected installed-target SSH key to be staged into the mission tree" >&2
   exit 1
@@ -67,6 +68,22 @@ cmp -s \
   echo "expected staged mission SSH key to match the selected public key" >&2
   exit 1
 }
+
+printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBrokenFixtureKey smoke@host\n' > "${MISSION_DIR}/artifacts/installed-target-ssh/authorized-key.pub"
+set +e
+( validate_staged_installed_target_ssh_artifacts "${MISSION_DIR}" ) >"${TMP}/staged-key-validation.log" 2>&1
+status=$?
+set -e
+[[ "${status}" -ne 0 ]] || {
+  echo "expected staged mission SSH validation to reject a fingerprint mismatch" >&2
+  exit 1
+}
+grep -Fq 'fingerprint mismatch' "${TMP}/staged-key-validation.log" || {
+  cat "${TMP}/staged-key-validation.log" >&2
+  exit 1
+}
+stage_selected_installed_target_ssh_artifacts "${MISSION_DIR}"
+validate_staged_installed_target_ssh_artifacts "${MISSION_DIR}"
 
 select_installed_target_ssh_key_by_name "stable-lab-box"
 mapfile -t stored_keys < <(list_installed_target_ssh_key_names)
@@ -91,6 +108,7 @@ delete_all_installed_target_ssh_keys
   exit 1
 }
 stage_selected_installed_target_ssh_artifacts "${MISSION_DIR}"
+validate_staged_installed_target_ssh_artifacts "${MISSION_DIR}"
 [[ ! -e "${MISSION_DIR}/artifacts/installed-target-ssh" ]] || {
   echo "expected staging helper to remove stale mission SSH artifacts when SSH is disabled" >&2
   exit 1

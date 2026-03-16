@@ -439,6 +439,28 @@ stage_selected_installed_target_ssh_artifacts() {
   cp -f "${SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_PATH}" "${stage_dir}/authorized-key.pub"
 }
 
+validate_staged_installed_target_ssh_artifacts() {
+  local mission_dir="$1"
+  local stage_dir="${mission_dir}/artifacts/installed-target-ssh"
+  local staged_key="${stage_dir}/authorized-key.pub"
+  local staged_fingerprint=""
+  local -a key_lines=()
+
+  if [[ "${SELECTED_INSTALLED_TARGET_SSH_MODE}" != "host-generated-authorized-key" ]]; then
+    [[ ! -e "${stage_dir}" ]] || die "installed-target SSH mission artifacts must be absent when SSH key selection is disabled"
+    return 0
+  fi
+
+  [[ -f "${staged_key}" ]] || die "installed-target SSH mission artifact missing: ${staged_key}"
+  mapfile -t key_lines < <(awk 'NF {print $0}' "${staged_key}")
+  [[ "${#key_lines[@]}" -eq 1 ]] || die "installed-target SSH mission artifact must contain exactly one non-empty public key line"
+  [[ "${key_lines[0]}" == ssh-ed25519\ * ]] || die "installed-target SSH mission artifact must contain an ssh-ed25519 public key"
+  staged_fingerprint="$(installed_target_ssh_public_key_fingerprint "${staged_key}")"
+  [[ "${staged_fingerprint}" == "${SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_FINGERPRINT}" ]] || {
+    die "installed-target SSH mission artifact fingerprint mismatch: expected ${SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_FINGERPRINT}, got ${staged_fingerprint:-unknown}"
+  }
+}
+
 log_installed_target_ssh_selection_summary() {
   if [[ -n "${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME}" ]]; then
     log "Installed-target SSH key: ${SELECTED_INSTALLED_TARGET_SSH_KEY_NAME} (${SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_FINGERPRINT})"
@@ -3411,6 +3433,10 @@ if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
   cp -f "${MERGED_SELECTED_APPLICATIONS_FILE}" "${AIRGAP_STAGE_DIR}/selected-apps.json"
 fi
 stage_selected_installed_target_ssh_artifacts "${MISSION_DIR}"
+validate_staged_installed_target_ssh_artifacts "${MISSION_DIR}"
+if [[ "${SELECTED_INSTALLED_TARGET_SSH_MODE}" == "host-generated-authorized-key" ]]; then
+  log "Installed-target SSH mission artifact: ${MISSION_DIR}/artifacts/installed-target-ssh/authorized-key.pub"
+fi
 
 export MISSION_DIR COMPOSE_ID COMPOSED_AT TARGET COMPOSER_REVISION ADAPTER_SOURCE_REPO ADAPTER_SOURCE_REVISION
 export VENDORED_ADAPTER_ROOT ADAPTER_RUNTIME_PROMPTS_JSON MINIMUM_MEDIA_SIZE_BYTES OUTPUT_KIND
