@@ -13,6 +13,7 @@
   "validate_entrypoint": "tools/media-adapter/validate-media.sh",
   "expected_os_artifact_type": "application/vnd.techofourown.ourbox.woodbox.os-payload.v1",
   "expected_airgap_arch": "amd64",
+  "installer_substrate_payload_filename": "installer.iso",
   "official": {
     "os_repo": "ghcr.io/techofourown/ourbox-woodbox-os",
     "os_catalog_tag": "x86-catalog",

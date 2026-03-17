@@ -6,10 +6,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${ROOT}/tools/lib.sh"
 
 TARGET="${1:-woodbox}"
-SOURCE_REPO="${2:-/techofourown/img-ourbox-woodbox}"
+SOURCE_REPO="${2:-}"
 
 case "${TARGET}" in
-  woodbox) : ;;
+  woodbox)
+    : "${SOURCE_REPO:=/techofourown/img-ourbox-woodbox}"
+    ;;
+  matchbox)
+    : "${SOURCE_REPO:=/techofourown/img-ourbox-matchbox}"
+    ;;
   *) die "unsupported adapter target: ${TARGET}" ;;
 esac
 
