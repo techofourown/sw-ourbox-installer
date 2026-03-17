@@ -33,11 +33,18 @@ jobs:
           bash -n tools/check-installed-target-ssh-keyring-smoke.sh
           bash -n tools/check-interactive-selection-smoke.sh
           bash -n tools/check-multi-catalog-selection-smoke.sh
+          bash -n tools/check-vendored-matchbox-compose-smoke.sh
+          bash -n tools/check-vendored-matchbox-flash-helper-smoke.sh
+          bash -n tools/check-vendored-matchbox-pin.sh
           bash -n tools/check-published-catalog-bundles-smoke.sh
           bash -n tools/check-upstream-catalog-defaults-smoke.sh
           bash -n tools/check-vendored-flash-helper-smoke.sh
           bash -n tools/check-vendored-woodbox-pin.sh
           bash -n tools/check-woodbox-contract-smoke.sh
+          bash -n vendor/matchbox/flash-installer-media.sh
+          bash -n vendor/matchbox/lib.sh
+          bash -n vendor/matchbox/compose-media.sh
+          bash -n vendor/matchbox/validate-media.sh
           bash -n vendor/woodbox/flash-installer-media.sh
           bash -n vendor/woodbox/lib.sh
           bash -n vendor/woodbox/compose-media.sh
@@ -47,6 +54,7 @@ jobs:
         run: |
           python3 -m py_compile tools/validate-mission-manifest.py
           python3 -m py_compile tools/merge-application-catalogs.py
+          python3 -m py_compile vendor/matchbox/strict-kv-metadata.py
           python3 -m py_compile vendor/woodbox/strict-kv-metadata.py
           python3 - <<'PY'
           import json
@@ -54,11 +62,15 @@ jobs:
 
           for path in (
               Path("schemas/mission-manifest.schema.json"),
+              Path("vendor/matchbox/adapter.json"),
               Path("vendor/woodbox/adapter.json"),
           ):
               with path.open("r", encoding="utf-8") as handle:
                   json.load(handle)
           PY
+
+      - name: Vendored Matchbox pin check
+        run: bash tools/check-vendored-matchbox-pin.sh
 
       - name: Vendored pin check
         run: bash tools/check-vendored-woodbox-pin.sh
@@ -108,13 +120,19 @@ jobs:
       - name: Vendored flash helper smoke
         run: bash tools/check-vendored-flash-helper-smoke.sh
 
+      - name: Vendored Matchbox flash helper smoke
+        run: bash tools/check-vendored-matchbox-flash-helper-smoke.sh
+
       - name: Published substrate selection smoke
         run: bash tools/check-adapter-repo-discovery-smoke.sh
 
       - name: Install compose smoke dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y xorriso p7zip-full rsync
+          sudo apt-get install -y e2fsprogs fdisk xorriso p7zip-full rsync
+
+      - name: Vendored Matchbox compose smoke
+        run: bash tools/check-vendored-matchbox-compose-smoke.sh
 
       - name: Woodbox contract smoke
         run: bash tools/check-woodbox-contract-smoke.sh
