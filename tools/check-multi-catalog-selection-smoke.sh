@@ -28,20 +28,21 @@ interactive_selection_enabled() {
   return 0
 }
 
+APPLICATION_CATALOG_DEFAULT_IDS="demo-apps"
 APPLICATION_CATALOG_SOURCES_JSON='[
   {
     "catalog_id": "demo-apps",
     "catalog_name": "Demo Application Catalog",
     "description": "default",
-    "artifact_ref": "ghcr.io/example/sw-ourbox-catalog-demo:latest",
-    "default_selected": true
+    "catalog_ref": "ghcr.io/example/sw-ourbox-catalog-demo:catalog-amd64",
+    "release_channel": "stable"
   },
   {
     "catalog_id": "hello-world",
     "catalog_name": "Hello World Catalog",
     "description": "secondary",
-    "artifact_ref": "ghcr.io/example/sw-ourbox-catalog-hello-world:latest",
-    "default_selected": false
+    "catalog_ref": "ghcr.io/example/sw-ourbox-catalog-hello-world:catalog-amd64",
+    "release_channel": "stable"
   }
 ]'
 
@@ -125,14 +126,14 @@ cat > "${CATALOG_ONE_DIR}/catalog.json" <<'EOF_CATALOG_ONE'
       "id": "hello-world",
       "app_uid": "techofourown/hello-world",
       "display_name": "Hello World",
-      "description": "hello",
+      "description": "hello alternate",
       "renderer": "hello-world",
       "service_name": "hello-world",
       "service_port": 80,
       "host_template": "hello.{box_host}",
       "path": "/",
       "expected_status": 200,
-      "body_marker": "Hello, world.",
+      "body_marker": "Hello from alternate catalog.",
       "route_description": "hello-world-root",
       "default_backend": false,
       "image_names": [

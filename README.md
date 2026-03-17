@@ -3,36 +3,34 @@
 `sw-ourbox-installer` is the host-side front door for composing OurBox mission
 media.
 
-Phase-one scope is intentionally narrow:
+Current scope:
 
-- target support: `woodbox` only
-- host-side selection: choose an exact Woodbox OS artifact on the host
-- host-side application catalog selection: choose one or more application
-  catalogs on the host and merge them into one effective catalog
-- host-side application selection: reuse the same selector logic against that
-  merged catalog:
-  - merged catalog defaults
-  - all apps from the merged catalog
-  - a custom app subset from the merged catalog
+- target support: `woodbox` and `matchbox`
+- host-side selection: choose an exact target OS artifact on the host
+- host-side application selection:
+  - Woodbox: choose one or more application catalogs, merge them into one
+    effective catalog, and select the desired app set
+  - Matchbox: choose one published arm64 application bundle bounded by the
+    selected OS payload's platform-contract digest
 - mission output: write a `mission-manifest.json` plus staged OS bytes,
-  synthesized application bundle bytes, and selected-app metadata
-- media compose: delegate to a vendored Woodbox media adapter snapshot while
-  pulling the published Woodbox installer substrate artifact automatically
+  staged application bytes, and selected metadata
+- media compose: delegate to a vendored target adapter snapshot while pulling
+  the published target installer substrate artifact automatically
 
-What phase one does not do yet:
+What this repo still does not do yet:
 
-- Matchbox or Tinderbox support
+- Tinderbox support
 - target-independent substrate composition
 
-The immediate win is narrower but real: the host now resolves the Woodbox OS
-artifact, one or more selected application catalogs, the selected app set, and
-the published Woodbox installer substrate up front, stages the mission
-directory, and invokes a vendored target adapter to compose installer media
-that installs from local mission bytes.
+The immediate win is no longer Woodbox-only. The host now resolves the selected
+target OS artifact, the selected application input for that target, and the
+published target installer substrate up front, stages the mission directory,
+and invokes a vendored target adapter to compose installer media that installs
+from local mission bytes.
 
-For Woodbox specifically, phase one already includes the purge of target-side
-artifact browsing and pulling from the supported install path. The remaining
-later-phase cleanup applies to other targets, especially Matchbox.
+For both Woodbox and Matchbox, the supported install path now purges
+target-side artifact browsing and pulling. The target installer consumes only
+the embedded local mission bytes.
 
 ## Usage
 
@@ -42,22 +40,35 @@ From a normal checkout of `sw-ourbox-installer`:
 git clone --recurse-submodules https://github.com/techofourown/sw-ourbox-installer.git
 cd sw-ourbox-installer
 ./tools/prepare-installer-media.sh
-# move media to Pi, boot, follow prompts, device powers off, remove media, boot NVMe
+# move the installer media to the target machine, boot it, follow the prompts,
+# let it power off, remove the installer media, then boot the installed system disk
 ```
 
 When run from a terminal, the host composer now mirrors the old installer UX:
 
 - it prompts for the target type first
 - it prompts for the OS artifact first
+- the default OS path must resolve through the upstream OS catalog; if that
+  catalog is unavailable or malformed, the run fails fast
 - `ENTER` accepts the default lane choice
 - `c` chooses a different lane
 - `l` lists catalog rows newest-first with `n`/`p` page navigation
 - `r` enters a custom OCI ref
 - `o` overrides the upstream repo/catalog
 - after OS selection, it prompts for one or more application catalogs
+- for official Woodbox catalogs, the default catalog ids must come from
+  upstream `sw-ourbox-os` install-defaults data
+- if that upstream defaults artifact is missing or malformed, the installer
+  fails fast instead of falling back to adapter-local default policy
+- official Woodbox catalog ids resolve through each catalog repo's published
+  `catalog.tsv`, so the installer picks a contract-compatible pinned bundle
+  instead of trusting floating bundle tags
+- if an upstream catalog cannot be fetched or does not expose a compatible
+  row, the official default path fails fast instead of degrading to mutable
+  non-catalog tags
 - if the selected catalogs provide the same app uid from multiple catalogs, it
-  stops and makes the operator choose which catalog should provide that app in
-  the merged catalog
+  only stops when the duplicated app definitions differ; identical duplicates
+  are deduped automatically
 - after duplicate app sources are resolved, it merges the catalogs into one
   effective catalog and prompts for the applications:
   - `ENTER` uses the merged default app set

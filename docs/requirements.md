@@ -220,9 +220,8 @@ implemented in phase one; some are mandatory direction even if follow-on phases
   because target-side username/password configuration remains part of the local
   install flow.
 
-### 12. Phase-one target scope is Woodbox first and includes the purge
+### 12. Current target scope includes Woodbox and Matchbox and includes the purge
 
-- Phase one is allowed to be Woodbox-only.
 - Phase one must establish the reusable host-side shape:
   - cache manager
   - host-side resolver
@@ -231,8 +230,9 @@ implemented in phase one; some are mandatory direction even if follow-on phases
   - adapter vendoring and pinning
 - While phase one is underway, no new official flow should be added that
   depends on target networking.
-- Phase one also requires deleting the Woodbox target-side browse/pull path.
-- No Woodbox target-side install path may retain:
+- Phase one also requires deleting the Woodbox and Matchbox target-side
+  browse/pull paths.
+- No Woodbox or Matchbox target-side install path may retain:
   - target-side OS catalog browsing
   - target-side airgap catalog browsing
   - target-side `oras` bootstrapping or pulling
@@ -257,29 +257,16 @@ implemented in phase one; some are mandatory direction even if follow-on phases
 These are intended requirements, but they are parked for later phases rather
 than phase one.
 
-### 1. Matchbox migration to fat/local mission media
+### 1. Additional targets
 
-- Matchbox should gain a local mission partition and local OS/application-catalog read path.
-- Official Matchbox installs should work with the target NIC unplugged.
-- Matchbox purge follows with that migration:
-  - target-side OS catalog browsing removed
-  - target-side application-catalog browsing removed
-  - target-side `oras` bootstrapping and pulling removed
-  - target-side registry login removed
-  - target-side remote `install-defaults` removed
-  - moving-tag resolution on target removed
-
-### 2. Additional targets
-
-- Matchbox support is parked for a later phase.
 - Tinderbox support is parked for a later phase.
 
-### 3. CI no-network validation gates
+### 2. CI no-network validation gates
 
 - Later phases should add explicit validation that official compose/install
   flows succeed without target network access.
 
-### 4. Canonical publish/provenance bundle embedding
+### 3. Canonical publish/provenance bundle embedding
 
 - Embedding upstream/downstream publish-record JSON or candidate-provenance JSON
   is not required for phase-one execution.
@@ -287,7 +274,7 @@ than phase one.
   reasons, that should be added as an explicit later requirement with a defined
   file contract.
 
-### 5. Operator-supplied local file inputs
+### 4. Operator-supplied local file inputs
 
 - Phase one does not require the host composer to accept arbitrary operator-
   supplied local artifact files as primary mission inputs.
@@ -367,7 +354,7 @@ The simplest phase-one interpretation is:
 - the target-never-resolves rule is already the architectural requirement
 - the target install must complete with no network connectivity
 - the unified repo exists
-- Woodbox is the first target
+- Woodbox and Matchbox are the current targets
 - the host can choose OS and airgap inputs while provisioning media
 - the host can choose a selected app set from the chosen application catalog
 - the host can choose from catalogs and explicit refs
@@ -377,8 +364,8 @@ The simplest phase-one interpretation is:
   operator confirmation
 - the tool offers cache cleanup at the end of compose
 - the adapter seam is pinned and vendored
-- Woodbox target-side browse/pull code is removed rather than preserved as a
-  compatibility path
+- Woodbox and Matchbox target-side browse/pull code are removed rather than
+  preserved as compatibility paths
 
 That last point is important:
 
