@@ -26,6 +26,7 @@ jobs:
           bash -n tools/check-application-catalog-duplicate-app-uid-smoke.sh
           bash -n tools/check-cache-policy-smoke.sh
           bash -n tools/check-application-catalog-conflict-policy-smoke.sh
+          bash -n tools/check-identical-duplicate-app-smoke.sh
           bash -n tools/check-flash-first-policy-smoke.sh
           bash -n tools/check-merged-catalog-determinism-smoke.sh
           bash -n tools/check-host-composed-selected-app-bundle-smoke.sh
@@ -33,6 +34,7 @@ jobs:
           bash -n tools/check-interactive-selection-smoke.sh
           bash -n tools/check-multi-catalog-selection-smoke.sh
           bash -n tools/check-published-catalog-bundles-smoke.sh
+          bash -n tools/check-upstream-catalog-defaults-smoke.sh
           bash -n tools/check-vendored-flash-helper-smoke.sh
           bash -n tools/check-vendored-woodbox-pin.sh
           bash -n tools/check-woodbox-contract-smoke.sh
@@ -67,6 +69,9 @@ jobs:
       - name: Application catalog conflict-policy smoke
         run: bash tools/check-application-catalog-conflict-policy-smoke.sh
 
+      - name: Identical duplicate app smoke
+        run: bash tools/check-identical-duplicate-app-smoke.sh
+
       - name: Application catalog duplicate app_uid smoke
         run: bash tools/check-application-catalog-duplicate-app-uid-smoke.sh
 
@@ -90,6 +95,9 @@ jobs:
 
       - name: Multi-catalog selection smoke
         run: bash tools/check-multi-catalog-selection-smoke.sh
+
+      - name: Upstream catalog defaults smoke
+        run: bash tools/check-upstream-catalog-defaults-smoke.sh
 
       - name: Install ORAS
         uses: oras-project/setup-oras@v1

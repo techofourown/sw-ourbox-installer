@@ -234,18 +234,21 @@ def ordered_candidates(candidates: list[dict]) -> list[dict]:
     return sorted(candidates, key=lambda item: item["_source_order"])
 
 
+def definitions_identical(candidates: list[dict]) -> bool:
+    return len({candidate["_signature"] for candidate in candidates}) == 1
+
+
 def build_duplicate_report(candidates_by_uid: dict[str, list[dict]]) -> list[dict]:
     report: list[dict] = []
     for app_uid in sorted(candidates_by_uid):
         candidates = ordered_candidates(candidates_by_uid[app_uid])
         if len(candidates) <= 1:
             continue
-        signatures = {candidate["_signature"] for candidate in candidates}
         report.append(
             {
                 "app_uid": app_uid,
                 "display_name": candidates[0]["display_name"],
-                "definitions_identical": len(signatures) == 1,
+                "definitions_identical": definitions_identical(candidates),
                 "candidates": [
                     {
                         "catalog_id": candidate["catalog_id"],
@@ -289,7 +292,24 @@ def select_candidate_for_app(
     if len(ordered) == 1:
         return ordered[0], None
 
+    identical = definitions_identical(ordered)
     selected_catalog_id = source_resolutions.get(app_uid, "").strip()
+    if not selected_catalog_id and identical:
+        chosen = ordered[0]
+        ordered_sources = sorted(ordered, key=lambda item: canonical_source_positions[canonical_source_key(item)])
+        ordered_sources = [chosen] + [item for item in ordered_sources if item is not chosen]
+        conflict_record = {
+            "type": "duplicate-app-source",
+            "app_uid": app_uid,
+            "selected_catalog_id": chosen["catalog_id"],
+            "selected_catalog_name": chosen["catalog_name"],
+            "available_catalog_ids": [candidate["catalog_id"] for candidate in ordered_sources],
+            "available_catalog_names": [candidate["catalog_name"] for candidate in ordered_sources],
+            "definitions_identical": True,
+            "policy": "identical-definition-dedupe",
+        }
+        return chosen, conflict_record
+
     if not selected_catalog_id:
         available = ", ".join(candidate["catalog_id"] for candidate in ordered)
         raise SystemExit(f"duplicate application source choice required for {app_uid}: choose one of {available}")
@@ -309,7 +329,6 @@ def select_candidate_for_app(
 
     ordered_sources = sorted(ordered, key=lambda item: canonical_source_positions[canonical_source_key(item)])
     ordered_sources = [chosen] + [item for item in ordered_sources if item is not chosen]
-    signatures = {candidate["_signature"] for candidate in ordered}
     conflict_record = {
         "type": "duplicate-app-source",
         "app_uid": app_uid,
@@ -317,7 +336,7 @@ def select_candidate_for_app(
         "selected_catalog_name": chosen["catalog_name"],
         "available_catalog_ids": [candidate["catalog_id"] for candidate in ordered_sources],
         "available_catalog_names": [candidate["catalog_name"] for candidate in ordered_sources],
-        "definitions_identical": len(signatures) == 1,
+        "definitions_identical": identical,
         "policy": "operator-selected-source",
     }
     return chosen, conflict_record
@@ -444,7 +463,9 @@ def main() -> int:
 
     source_resolutions = parse_source_resolutions(args.source_resolutions_json)
     unresolved_duplicates = [
-        item for item in duplicate_report if str(item["app_uid"]) not in source_resolutions
+        item
+        for item in duplicate_report
+        if not bool(item.get("definitions_identical", False)) and str(item["app_uid"]) not in source_resolutions
     ]
     if unresolved_duplicates:
         raise SystemExit(render_unresolved_duplicate_error(unresolved_duplicates))

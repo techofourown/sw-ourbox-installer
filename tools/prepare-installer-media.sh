@@ -667,13 +667,14 @@ installer_tags = official["installer_channel_tags"]
 catalog_sources = official.get("application_catalog_sources")
 if not isinstance(catalog_sources, list) or not catalog_sources:
     raise SystemExit("adapter must declare official.application_catalog_sources")
+install_defaults_ref = str(official.get("install_defaults_ref", "")).strip()
 for source in catalog_sources:
     if not str(source.get("catalog_id", "")).strip():
         raise SystemExit("application_catalog_sources entries must declare catalog_id")
     if not str(source.get("catalog_name", "")).strip():
         raise SystemExit("application_catalog_sources entries must declare catalog_name")
-    if not str(source.get("artifact_ref", "")).strip():
-        raise SystemExit("application_catalog_sources entries must declare artifact_ref")
+    if not (str(source.get("artifact_ref", "")).strip() or str(source.get("catalog_ref", "")).strip()):
+        raise SystemExit("application_catalog_sources entries must declare artifact_ref or catalog_ref")
 
 values = [
     official["os_repo"],
@@ -692,13 +693,14 @@ values = [
     str(adapter.get("minimum_media_size_bytes", "")),
     adapter.get("output_kind", ""),
     json.dumps(adapter.get("runtime_prompts_kept", [])),
+    install_defaults_ref,
     json.dumps(catalog_sources),
 ]
 print("\n".join(values))
 PY
 )"
 mapfile -t adapter_fields <<<"${adapter_dump}"
-[[ "${#adapter_fields[@]}" -eq 17 ]] || die "failed to load vendored woodbox adapter metadata"
+[[ "${#adapter_fields[@]}" -eq 18 ]] || die "failed to load vendored woodbox adapter metadata"
 OS_REPO="${adapter_fields[0]}"
 OS_CATALOG_TAG="${adapter_fields[1]}"
 OS_CHANNEL_TAG_STABLE="${adapter_fields[2]}"
@@ -715,7 +717,8 @@ INSTALLER_CHANNEL_TAG_EXP_LABS="${adapter_fields[12]}"
 MINIMUM_MEDIA_SIZE_BYTES="${adapter_fields[13]}"
 OUTPUT_KIND="${adapter_fields[14]}"
 ADAPTER_RUNTIME_PROMPTS_JSON="${adapter_fields[15]}"
-APPLICATION_CATALOG_SOURCES_JSON="${adapter_fields[16]}"
+INSTALL_DEFAULTS_REF="${adapter_fields[16]}"
+APPLICATION_CATALOG_SOURCES_JSON="${adapter_fields[17]}"
 
 case "${OURBOX_CACHE_REUSE_POLICY}" in
   ask|always|never) ;;
@@ -1910,6 +1913,7 @@ determine_airgap_ref() {
 
 SELECTED_APPLICATION_CATALOG_SOURCES_JSON="[]"
 SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY=""
+APPLICATION_CATALOG_DEFAULT_IDS="${APPLICATION_CATALOG_DEFAULT_IDS:-}"
 
 application_catalog_source_display_from_json() {
   local sources_json="$1"
@@ -1925,7 +1929,7 @@ labels = []
 for source in sources:
     name = str(source.get("catalog_name", "")).strip()
     catalog_id = str(source.get("catalog_id", "")).strip()
-    ref = str(source.get("artifact_ref", "")).strip()
+    ref = str(source.get("artifact_ref", "")).strip() or str(source.get("catalog_ref", "")).strip()
     if name and catalog_id:
         labels.append(f"{name} ({catalog_id})")
     elif name:
@@ -1949,12 +1953,14 @@ if not isinstance(sources, list) or not sources:
     raise SystemExit("application catalog sources must be a non-empty list")
 
 for source in sources:
-    print("\t".join(
+    print("\x1f".join(
         [
             str(source.get("catalog_id", "")).strip(),
             str(source.get("catalog_name", "")).strip(),
             str(source.get("description", "")).strip(),
             str(source.get("artifact_ref", "")).strip(),
+            str(source.get("catalog_ref", "")).strip(),
+            str(source.get("release_channel", "")).strip(),
             "1" if bool(source.get("default_selected", False)) else "0",
         ]
     ))
@@ -1968,19 +1974,27 @@ render_application_catalog_source_entry() {
   local catalog_name=""
   local description=""
   local artifact_ref=""
+  local catalog_ref=""
+  local release_channel=""
   local default_selected=""
 
-  IFS=$'\t' read -r catalog_id catalog_name description artifact_ref default_selected <<<"${entry}"
+  IFS=$'\x1f' read -r catalog_id catalog_name description artifact_ref catalog_ref release_channel default_selected <<<"${entry}"
   if [[ "${default_selected}" == "1" ]]; then
     printf "  %d) %-18s %-28s [default]\n" "${display_number}" "${catalog_id}" "${catalog_name}"
   else
     printf "  %d) %-18s %-28s\n" "${display_number}" "${catalog_id}" "${catalog_name}"
   fi
   [[ -n "${description}" ]] && printf "      %s\n" "${description}"
-  printf "      %s\n" "${artifact_ref}"
+  printf "      %s\n" "${artifact_ref:-${catalog_ref}}"
+  [[ -n "${catalog_ref}" && -n "${release_channel}" ]] && printf "      channel: %s\n" "${release_channel}"
 }
 
 resolve_default_application_catalog_sources_json() {
+  if [[ -n "${APPLICATION_CATALOG_DEFAULT_IDS}" ]]; then
+    resolve_application_catalog_sources_from_ids "${APPLICATION_CATALOG_DEFAULT_IDS}"
+    return 0
+  fi
+
   python3 - <<'PY' "${APPLICATION_CATALOG_SOURCES_JSON}"
 import json
 import sys
@@ -2023,6 +2037,62 @@ for catalog_id in requested:
 
 print(json.dumps(selected))
 PY
+}
+
+load_application_catalog_defaults_from_install_defaults() {
+  local defaults_cache_dir=""
+  local defaults_tarball=""
+  local extract_dir="${TMP_ROOT}/install-defaults"
+  local profile_file=""
+
+  APPLICATION_CATALOG_DEFAULT_IDS=""
+  [[ -n "${INSTALL_DEFAULTS_REF}" ]] || return 0
+
+  if ! try_cache_pull_oci_artifact "${INSTALL_DEFAULTS_REF}" "${CACHE_REUSE_ENABLED}" defaults_cache_dir; then
+    log "Install defaults ${INSTALL_DEFAULTS_REF} unavailable; falling back to adapter-declared application catalog defaults."
+    return 0
+  fi
+
+  defaults_tarball="$(find_pulled_file "${defaults_cache_dir}" "install-defaults.tar.gz")"
+  if [[ -z "${defaults_tarball}" || ! -f "${defaults_tarball}" ]]; then
+    log "Install defaults ${INSTALL_DEFAULTS_REF} did not include install-defaults.tar.gz; falling back to adapter-declared application catalog defaults."
+    return 0
+  fi
+
+  rm -rf "${extract_dir}"
+  mkdir -p "${extract_dir}"
+  tar -xzf "${defaults_tarball}" -C "${extract_dir}"
+  profile_file="${extract_dir}/install-defaults/defaults/${TARGET}.env"
+  if [[ ! -f "${profile_file}" ]]; then
+    log "Install defaults ${INSTALL_DEFAULTS_REF} did not include defaults/${TARGET}.env; falling back to adapter-declared application catalog defaults."
+    return 0
+  fi
+
+  APPLICATION_CATALOG_DEFAULT_IDS="$(
+    python3 - <<'PY' "${profile_file}"
+import re
+import sys
+from pathlib import Path
+
+value = ""
+for raw_line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+    line = raw_line.strip()
+    if not line or line.startswith("#"):
+        continue
+    key, field = line.split("=", 1)
+    if key == "APPLICATION_CATALOG_DEFAULT_IDS":
+        value = field.strip()
+        break
+
+if value and not re.fullmatch(r"[a-z0-9-]+(?:,[a-z0-9-]+)*", value):
+    raise SystemExit("APPLICATION_CATALOG_DEFAULT_IDS must be a comma-separated list of catalog ids")
+
+print(value)
+PY
+  )" || die "failed to parse APPLICATION_CATALOG_DEFAULT_IDS from ${INSTALL_DEFAULTS_REF}"
+
+  [[ -n "${APPLICATION_CATALOG_DEFAULT_IDS}" ]] \
+    && log "Loaded default application catalog ids from install defaults: ${APPLICATION_CATALOG_DEFAULT_IDS}"
 }
 
 resolve_application_catalog_ids_from_numbers() {
@@ -2085,6 +2155,8 @@ for ref in refs:
             "catalog_name": "",
             "description": "Operator-provided application catalog bundle",
             "artifact_ref": ref,
+            "catalog_ref": "",
+            "release_channel": "",
             "default_selected": False,
         }
     )
@@ -2275,6 +2347,8 @@ for item in duplicate_report:
     app_uid = str(item.get("app_uid", "")).strip()
     if not app_uid:
         continue
+    if bool(item.get("definitions_identical", False)):
+        continue
     if app_uid not in resolutions:
         print(app_uid)
 PY
@@ -2407,6 +2481,8 @@ lines = [
 for item in duplicate_report:
     app_uid = str(item.get("app_uid", "")).strip()
     if not app_uid:
+        continue
+    if bool(item.get("definitions_identical", False)):
         continue
     choices = ", ".join(
         f\"{candidate.get('catalog_id', '')} ({candidate.get('catalog_name', '')})\"
@@ -2901,6 +2977,23 @@ pull_and_save_image_tar() {
   [[ -s "${tar_path}" ]] || die "image save failed for ${image_ref}"
 }
 
+resolve_application_catalog_bundle_ref_from_catalog() {
+  local catalog_ref="$1"
+  local release_channel="${2:-stable}"
+  local catalog_cache_dir=""
+  local catalog_tsv=""
+  local resolved_ref=""
+
+  cache_pull_oci_artifact "${catalog_ref}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir
+  catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
+  [[ -n "${catalog_tsv}" && -f "${catalog_tsv}" ]] || die "application catalog index missing catalog.tsv: ${catalog_ref}"
+
+  resolved_ref="$(select_airgap_ref_from_catalog "${catalog_tsv}" "${release_channel}" "${PLATFORM_CONTRACT_DIGEST}" "${EXPECTED_AIRGAP_ARCH}" || true)"
+  is_pinned_ref "${resolved_ref}" \
+    || die "application catalog index ${catalog_ref} had no ${release_channel} row for arch=${EXPECTED_AIRGAP_ARCH} contract=${PLATFORM_CONTRACT_DIGEST}"
+  printf '%s\n' "${resolved_ref}"
+}
+
 extract_selected_application_catalog_source_entries() {
   python3 - <<'PY' "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}"
 import json
@@ -2911,11 +3004,13 @@ if not isinstance(sources, list) or not sources:
     raise SystemExit("selected application catalog sources must be a non-empty list")
 
 for source in sources:
-    print("\t".join(
+    print("\x1f".join(
         [
             str(source.get("catalog_id", "")).strip(),
             str(source.get("catalog_name", "")).strip(),
             str(source.get("artifact_ref", "")).strip(),
+            str(source.get("catalog_ref", "")).strip(),
+            str(source.get("release_channel", "")).strip(),
         ]
     ))
 PY
@@ -2933,6 +3028,9 @@ prepare_merged_application_catalog() {
   local requested_catalog_id=""
   local requested_catalog_name=""
   local requested_artifact_ref=""
+  local requested_catalog_ref=""
+  local requested_release_channel=""
+  local requested_pull_ref=""
   local catalog_cache_dir=""
   local extracted_dir=""
   local bundle_tarball=""
@@ -2948,12 +3046,17 @@ prepare_merged_application_catalog() {
   mkdir -p "${extracted_root}"
   : > "${source_records_tsv}"
 
-  while IFS=$'\t' read -r requested_catalog_id requested_catalog_name requested_artifact_ref; do
-    [[ -n "${requested_artifact_ref}" ]] || die "selected application catalog source is missing artifact_ref"
-    cache_pull_oci_artifact "${requested_artifact_ref}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir
+  while IFS=$'\x1f' read -r requested_catalog_id requested_catalog_name requested_artifact_ref requested_catalog_ref requested_release_channel; do
+    requested_pull_ref="${requested_artifact_ref}"
+    if [[ -z "${requested_pull_ref}" && -n "${requested_catalog_ref}" ]]; then
+      requested_pull_ref="$(resolve_application_catalog_bundle_ref_from_catalog "${requested_catalog_ref}" "${requested_release_channel:-stable}")"
+    fi
+    [[ -n "${requested_pull_ref}" ]] || die "selected application catalog source is missing artifact_ref and catalog_ref"
+
+    cache_pull_oci_artifact "${requested_pull_ref}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir
     pinned_digest="${OURBOX_CACHE_LAST_DIGEST}"
     pinned_ref="${OURBOX_CACHE_LAST_PINNED_REF}"
-    log_resolved_artifact_ref "application catalog" "${requested_artifact_ref}" "${pinned_ref}"
+    log_resolved_artifact_ref "application catalog" "${requested_artifact_ref:-${requested_catalog_ref}}" "${pinned_ref}"
 
     bundle_tarball="$(find_pulled_file "${catalog_cache_dir}" "application-catalog-bundle.tar.gz")"
     [[ -f "${bundle_tarball}" ]] || die "cached application catalog bundle missing application-catalog-bundle.tar.gz: ${catalog_cache_dir}"
@@ -3384,13 +3487,18 @@ is_sha256_digest "${BAKED_AIRGAP_DIGEST}" || die "selected OS payload is missing
 
 APPLICATION_SOURCE_RESOLUTIONS_JSON="$(parse_application_source_resolutions_spec "${APP_SOURCE_RESOLUTIONS_SPEC}")"
 
+load_application_catalog_defaults_from_install_defaults
 determine_application_catalog_sources
 SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL="$(selected_installer_release_channel)"
 SELECTED_INSTALLER_SUBSTRATE_REF="${INSTALLER_REPO}:$(installer_channel_tag_for "${SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL}")"
 
 selected_catalog_cache_refs=()
-while IFS=$'\t' read -r _requested_catalog_id _requested_catalog_name requested_artifact_ref; do
-  [[ -n "${requested_artifact_ref}" ]] && selected_catalog_cache_refs+=("${requested_artifact_ref}")
+while IFS=$'\x1f' read -r _requested_catalog_id _requested_catalog_name requested_artifact_ref requested_catalog_ref _requested_release_channel; do
+  if [[ -n "${requested_artifact_ref}" ]]; then
+    selected_catalog_cache_refs+=("${requested_artifact_ref}")
+  elif [[ -n "${requested_catalog_ref}" ]]; then
+    selected_catalog_cache_refs+=("${requested_catalog_ref}")
+  fi
 done < <(extract_selected_application_catalog_source_entries)
 
 maybe_confirm_cache_reuse "the selected mission artifacts" "${SELECTED_OS_REF}" "${selected_catalog_cache_refs[@]}" "${SELECTED_INSTALLER_SUBSTRATE_REF}"

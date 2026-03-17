@@ -76,21 +76,46 @@ cat > "${TMP_ROOT}/sources.json" <<EOF
 EOF
 
 python3 "${ROOT}/tools/merge-application-catalogs.py" \
+  --analysis-only \
+  --sources-json "${TMP_ROOT}/sources.json" \
+  --out-duplicates "${TMP_ROOT}/duplicates.json"
+
+SOURCE_RESOLUTIONS_JSON="$(
+  python3 - <<'PY' "${TMP_ROOT}/duplicates.json"
+import json
+import sys
+
+duplicate_report = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+for item in duplicate_report:
+    if str(item.get("app_uid", "")).strip() != "techofourown/hello-world":
+        continue
+    if bool(item.get("definitions_identical", False)):
+        print("{}")
+    else:
+        print('{"techofourown/hello-world":"hello-world"}')
+    raise SystemExit(0)
+
+print("{}")
+PY
+)"
+
+python3 "${ROOT}/tools/merge-application-catalogs.py" \
   --sources-json "${TMP_ROOT}/sources.json" \
   --selection-mode catalog-defaults \
-  --source-resolutions-json '{"techofourown/hello-world":"hello-world"}' \
+  --source-resolutions-json "${SOURCE_RESOLUTIONS_JSON}" \
   --out-catalog "${TMP_ROOT}/merged.catalog.json" \
   --out-selected-apps "${TMP_ROOT}/merged.selected-apps.json" \
   --out-images-lock "${TMP_ROOT}/merged.images.lock.json" \
   --out-summary "${TMP_ROOT}/merged.summary.json"
 
-python3 - <<'PY' "${TMP_ROOT}/merged.catalog.json" "${TMP_ROOT}/merged.selected-apps.json" "${TMP_ROOT}/merged.summary.json"
+python3 - <<'PY' "${TMP_ROOT}/merged.catalog.json" "${TMP_ROOT}/merged.selected-apps.json" "${TMP_ROOT}/merged.summary.json" "${SOURCE_RESOLUTIONS_JSON}"
 import json
 import sys
 
 catalog = json.load(open(sys.argv[1], "r", encoding="utf-8"))
 selected = json.load(open(sys.argv[2], "r", encoding="utf-8"))
 summary = json.load(open(sys.argv[3], "r", encoding="utf-8"))
+expected_source_resolutions = json.loads(sys.argv[4])
 
 app_ids = {app["id"] for app in catalog["apps"]}
 if "techofourown/hello-world" not in app_ids:
@@ -99,7 +124,7 @@ if "techofourown/todo-bloom" not in app_ids:
     raise SystemExit("expected merged published catalog to contain todo-bloom")
 if selected["selection_mode"] != "catalog-defaults":
     raise SystemExit(f"unexpected selection mode: {selected['selection_mode']}")
-if selected["source_resolutions"] != {"techofourown/hello-world": "hello-world"}:
+if selected["source_resolutions"] != expected_source_resolutions:
     raise SystemExit(f"unexpected source resolutions payload: {selected['source_resolutions']}")
 if len(summary.get("source_catalogs", [])) != 2:
     raise SystemExit("expected two published source catalogs in summary")

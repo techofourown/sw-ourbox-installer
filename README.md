@@ -55,9 +55,14 @@ When run from a terminal, the host composer now mirrors the old installer UX:
 - `r` enters a custom OCI ref
 - `o` overrides the upstream repo/catalog
 - after OS selection, it prompts for one or more application catalogs
+- for official Woodbox catalogs, the default catalog ids come from upstream
+  `sw-ourbox-os` install-defaults data when that artifact is available
+- official Woodbox catalog ids resolve through each catalog repo's published
+  `catalog.tsv`, so the installer picks a contract-compatible pinned bundle
+  instead of trusting floating bundle tags
 - if the selected catalogs provide the same app uid from multiple catalogs, it
-  stops and makes the operator choose which catalog should provide that app in
-  the merged catalog
+  only stops when the duplicated app definitions differ; identical duplicates
+  are deduped automatically
 - after duplicate app sources are resolved, it merges the catalogs into one
   effective catalog and prompts for the applications:
   - `ENTER` uses the merged default app set
