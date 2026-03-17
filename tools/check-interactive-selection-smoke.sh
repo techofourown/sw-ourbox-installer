@@ -43,15 +43,6 @@ OS_CHANNEL_TAG_NIGHTLY="x86-nightly"
 OS_CHANNEL_TAG_EXP_LABS="x86-exp-labs"
 OS_REF=""
 
-AIRGAP_REPO="ghcr.io/example/airgap-platform"
-AIRGAP_CATALOG_TAG="catalog-amd64"
-AIRGAP_CHANNEL_TAG_STABLE="stable-amd64"
-AIRGAP_CHANNEL_TAG_BETA="beta-amd64"
-AIRGAP_CHANNEL_TAG_NIGHTLY="nightly-amd64"
-AIRGAP_CHANNEL_TAG_EXP_LABS="exp-labs-amd64"
-EXPECTED_AIRGAP_ARCH="amd64"
-AIRGAP_REF=""
-
 make_pinned_ref() {
   local repo="$1"
   local value="$2"
@@ -63,14 +54,9 @@ CONTRACT_DIGEST="sha256:11111111111111111111111111111111111111111111111111111111
 OS_STABLE_PINNED="$(make_pinned_ref "${OS_REPO}" 100)"
 OS_BETA_PINNED="$(make_pinned_ref "${OS_REPO}" 101)"
 OS_PAGE2_SELECTED_PINNED="$(make_pinned_ref "${OS_REPO}" 102)"
-AIRGAP_STABLE_PINNED="$(make_pinned_ref "${AIRGAP_REPO}" 200)"
-AIRGAP_BETA_PINNED="$(make_pinned_ref "${AIRGAP_REPO}" 201)"
-AIRGAP_PAGE2_SELECTED_PINNED="$(make_pinned_ref "${AIRGAP_REPO}" 202)"
-BAKED_AIRGAP_REF="$(make_pinned_ref "${AIRGAP_REPO}" 299)"
 
 OS_CATALOG_DIR="${TMP_ROOT}/os-catalog"
-AIRGAP_CATALOG_DIR="${TMP_ROOT}/airgap-catalog"
-mkdir -p "${OS_CATALOG_DIR}" "${AIRGAP_CATALOG_DIR}"
+mkdir -p "${OS_CATALOG_DIR}"
 
 {
   echo $'channel\ttag\tcreated\tversion\tplatform_contract_digest\tpinned_ref'
@@ -89,23 +75,6 @@ mkdir -p "${OS_CATALOG_DIR}" "${AIRGAP_CATALOG_DIR}"
   printf 'x86-stable\tx86-stable-oldest\t2026-03-01T12:00:00\tv0.1.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 100)"
 } > "${OS_CATALOG_DIR}/catalog.tsv"
 
-{
-  echo $'channel\ttag\tcreated\tversion\tarch\tplatform_contract_digest\tpinned_ref'
-  printf 'beta\tbeta-amd64\t2026-03-13T12:00:00Z\tv1.1.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "${AIRGAP_BETA_PINNED}"
-  printf 'stable\tstable-amd64\t2026-03-12T12:00:00\tv1.0.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "${AIRGAP_STABLE_PINNED}"
-  printf 'nightly\tnightly-amd64\t2026-03-11T12:00:00Z\tv0.11.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 211)"
-  printf 'exp-labs\texp-labs-amd64\t2026-03-10T12:00:00Z\tv0.10.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 210)"
-  printf 'stable\tstable-amd64-older-1\t2026-03-09T12:00:00Z\tv0.9.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 209)"
-  printf 'beta\tbeta-amd64-older-1\t2026-03-08T12:00:00Z\tv0.8.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 208)"
-  printf 'nightly\tnightly-amd64-older-1\t2026-03-07T12:00:00Z\tv0.7.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 207)"
-  printf 'exp-labs\texp-labs-amd64-older-1\t2026-03-06T12:00:00Z\tv0.6.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 206)"
-  printf 'stable\tstable-amd64-older-2\t2026-03-05T12:00:00Z\tv0.5.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 205)"
-  printf 'beta\tbeta-amd64-older-2\t2026-03-04T12:00:00Z\tv0.4.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 204)"
-  printf 'nightly\tnightly-amd64-older-2\t2026-03-03T12:00:00Z\tv0.3.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 203)"
-  printf 'exp-labs\texp-labs-amd64-older-2\t2026-03-02T12:00:00Z\tv0.2.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "${AIRGAP_PAGE2_SELECTED_PINNED}"
-  printf 'stable\tstable-amd64-oldest\t2026-03-01T12:00:00\tv0.1.0\tamd64\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${AIRGAP_REPO}" 200)"
-} > "${AIRGAP_CATALOG_DIR}/catalog.tsv"
-
 try_cache_pull_oci_artifact() {
   local ref="$1"
   local _reuse_cache="$2"
@@ -114,7 +83,6 @@ try_cache_pull_oci_artifact() {
 
   case "${ref}" in
     "${OS_REPO}:${OS_CATALOG_TAG}") catalog_dir="${OS_CATALOG_DIR}" ;;
-    "${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}") catalog_dir="${AIRGAP_CATALOG_DIR}" ;;
     *) die "unexpected cache pull in interactive selection smoke: ${ref}" ;;
   esac
 
@@ -161,50 +129,6 @@ determine_os_ref <<< $'l\nn\n2\n'
 [[ "${SELECTED_OS_SELECTION_SOURCE}" == "catalog" ]] || die "expected paginated OS selection source to be catalog"
 [[ "${SELECTED_OS_RELEASE_CHANNEL}" == "exp-labs" ]] || die "expected paginated OS release channel to normalize to exp-labs"
 
-AIRGAP_CHANNEL=""
-SELECTED_AIRGAP_REF=""
-SELECTED_AIRGAP_SELECTION_MODE=""
-SELECTED_AIRGAP_SELECTION_SOURCE=""
-SELECTED_AIRGAP_RELEASE_CHANNEL=""
-determine_airgap_ref "${CONTRACT_DIGEST}" <<< $'\n'
-[[ "${SELECTED_AIRGAP_REF}" == "${BAKED_AIRGAP_REF}" ]] || die "expected ENTER to accept the baked airgap default"
-[[ "${SELECTED_AIRGAP_SELECTION_MODE}" == "baked-from-selected-os" ]] || die "expected baked airgap selection mode"
-[[ "${SELECTED_AIRGAP_SELECTION_SOURCE}" == "baked-os-payload" ]] || die "expected baked airgap selection source"
-
-AIRGAP_CHANNEL=""
-SELECTED_AIRGAP_REF=""
-SELECTED_AIRGAP_SELECTION_MODE=""
-SELECTED_AIRGAP_SELECTION_SOURCE=""
-SELECTED_AIRGAP_RELEASE_CHANNEL=""
-determine_airgap_ref "${CONTRACT_DIGEST}" <<< $'l\n1\n'
-[[ "${SELECTED_AIRGAP_REF}" == "${AIRGAP_BETA_PINNED}" ]] || die "expected airgap catalog list selection to choose the first listed row"
-[[ "${SELECTED_AIRGAP_SELECTION_MODE}" == "host-selected" ]] || die "expected listed airgap selection mode to be host-selected"
-[[ "${SELECTED_AIRGAP_SELECTION_SOURCE}" == "catalog" ]] || die "expected listed airgap selection source to be catalog"
-[[ "${SELECTED_AIRGAP_RELEASE_CHANNEL}" == "beta" ]] || die "expected listed airgap release channel to normalize to beta"
-
-AIRGAP_CHANNEL=""
-SELECTED_AIRGAP_REF=""
-SELECTED_AIRGAP_SELECTION_MODE=""
-SELECTED_AIRGAP_SELECTION_SOURCE=""
-SELECTED_AIRGAP_RELEASE_CHANNEL=""
-determine_airgap_ref "${CONTRACT_DIGEST}" <<< $'l\nn\np\n1\n'
-[[ "${SELECTED_AIRGAP_REF}" == "${AIRGAP_BETA_PINNED}" ]] || die "expected previous-page navigation to return to the newest airgap row"
-[[ "${SELECTED_AIRGAP_SELECTION_MODE}" == "host-selected" ]] || die "expected paginated airgap selection mode to be host-selected"
-[[ "${SELECTED_AIRGAP_SELECTION_SOURCE}" == "catalog" ]] || die "expected paginated airgap selection source to be catalog"
-[[ "${SELECTED_AIRGAP_RELEASE_CHANNEL}" == "beta" ]] || die "expected paginated airgap release channel to normalize to beta"
-
-AIRGAP_CHANNEL="stable"
-SELECTED_AIRGAP_REF=""
-SELECTED_AIRGAP_SELECTION_MODE=""
-SELECTED_AIRGAP_SELECTION_SOURCE=""
-SELECTED_AIRGAP_RELEASE_CHANNEL=""
-determine_airgap_ref "${CONTRACT_DIGEST}" <<< $'\n'
-[[ "${SELECTED_AIRGAP_REF}" == "${AIRGAP_STABLE_PINNED}" ]] || die "expected mixed timestamp default airgap resolution to choose newest stable row"
-[[ "${SELECTED_AIRGAP_SELECTION_MODE}" == "host-selected" ]] || die "expected default airgap channel selection mode to be host-selected"
-[[ "${SELECTED_AIRGAP_SELECTION_SOURCE}" == "catalog" ]] || die "expected default airgap channel selection source to be catalog"
-[[ "${SELECTED_AIRGAP_RELEASE_CHANNEL}" == "stable" ]] || die "expected default airgap channel release channel to remain stable"
-AIRGAP_CHANNEL=""
-
 try_cache_pull_oci_artifact() {
   return 1
 }
@@ -214,12 +138,6 @@ if (resolve_os_channel_ref "stable") >"${TMP_ROOT}/missing-os.out" 2>"${TMP_ROOT
 fi
 grep -F "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} is unavailable" "${TMP_ROOT}/missing-os.err" >/dev/null \
   || die "expected missing OS catalog failure to mention the unavailable catalog"
-
-if (resolve_airgap_channel_ref "${CONTRACT_DIGEST}" "stable") >"${TMP_ROOT}/missing-airgap.out" 2>"${TMP_ROOT}/missing-airgap.err"; then
-  die "expected missing airgap catalog to fail fast"
-fi
-grep -F "Application catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} is unavailable" "${TMP_ROOT}/missing-airgap.err" >/dev/null \
-  || die "expected missing airgap catalog failure to mention the unavailable catalog"
 
 AIRGAP_EXTRACT_DIR="${TMP_ROOT}/airgap-extract"
 mkdir -p "${AIRGAP_EXTRACT_DIR}/platform"

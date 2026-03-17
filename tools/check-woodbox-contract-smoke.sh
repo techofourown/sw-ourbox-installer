@@ -113,7 +113,7 @@ cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
     "prompt_identity_on_target": true
   },
   "mission_media": {
-    "compose_strategy": "woodbox-fat-iso-with-host-selected-os-and-airgap",
+    "compose_strategy": "woodbox-fat-iso-with-host-selected-os-application-catalog-and-app-selection",
     "mission_only": false
   },
   "substrate": {
@@ -141,8 +141,8 @@ cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
     "metadata_relpath": "artifacts/os/os.meta.env"
   },
   "selected_airgap": {
-    "selection_mode": "baked-from-selected-os",
-    "selection_source": "baked-os-payload",
+    "selection_mode": "host-selected",
+    "selection_source": "application-catalogs",
     "release_channel": "",
     "artifact_ref": "ghcr.io/example/airgap-platform@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "artifact_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -155,7 +155,7 @@ cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
     "payload_relpath": "artifacts/airgap/airgap-platform.tar.gz",
     "manifest_relpath": "artifacts/airgap/manifest.env",
     "images_lock_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-    "present_in_selected_os_payload": true
+    "present_in_selected_os_payload": false
   },
   "installed_target_ssh": {
     "mode": "host-generated-authorized-key",
