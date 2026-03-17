@@ -3,36 +3,34 @@
 `sw-ourbox-installer` is the host-side front door for composing OurBox mission
 media.
 
-Phase-one scope is intentionally narrow:
+Current scope:
 
-- target support: `woodbox` only
-- host-side selection: choose an exact Woodbox OS artifact on the host
-- host-side application catalog selection: choose one or more application
-  catalogs on the host and merge them into one effective catalog
-- host-side application selection: reuse the same selector logic against that
-  merged catalog:
-  - merged catalog defaults
-  - all apps from the merged catalog
-  - a custom app subset from the merged catalog
+- target support: `woodbox` and `matchbox`
+- host-side selection: choose an exact target OS artifact on the host
+- host-side application selection:
+  - Woodbox: choose one or more application catalogs, merge them into one
+    effective catalog, and select the desired app set
+  - Matchbox: choose one published arm64 application bundle bounded by the
+    selected OS payload's platform-contract digest
 - mission output: write a `mission-manifest.json` plus staged OS bytes,
-  synthesized application bundle bytes, and selected-app metadata
-- media compose: delegate to a vendored Woodbox media adapter snapshot while
-  pulling the published Woodbox installer substrate artifact automatically
+  staged application bytes, and selected metadata
+- media compose: delegate to a vendored target adapter snapshot while pulling
+  the published target installer substrate artifact automatically
 
-What phase one does not do yet:
+What this repo still does not do yet:
 
-- Matchbox or Tinderbox support
+- Tinderbox support
 - target-independent substrate composition
 
-The immediate win is narrower but real: the host now resolves the Woodbox OS
-artifact, one or more selected application catalogs, the selected app set, and
-the published Woodbox installer substrate up front, stages the mission
-directory, and invokes a vendored target adapter to compose installer media
-that installs from local mission bytes.
+The immediate win is no longer Woodbox-only. The host now resolves the selected
+target OS artifact, the selected application input for that target, and the
+published target installer substrate up front, stages the mission directory,
+and invokes a vendored target adapter to compose installer media that installs
+from local mission bytes.
 
-For Woodbox specifically, phase one already includes the purge of target-side
-artifact browsing and pulling from the supported install path. The remaining
-later-phase cleanup applies to other targets, especially Matchbox.
+For both Woodbox and Matchbox, the supported install path now purges
+target-side artifact browsing and pulling. The target installer consumes only
+the embedded local mission bytes.
 
 ## Usage
 

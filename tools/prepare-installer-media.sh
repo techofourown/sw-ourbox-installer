@@ -29,8 +29,9 @@ MISSION_ONLY=0
 COMPOSE_ONLY=0
 FLASH_DEVICE=""
 INSTALLED_TARGET_SSH_KEY_NAME_REQUEST=""
-VENDORED_ADAPTER_ROOT="${ROOT}/vendor/woodbox"
-VENDORED_METADATA_PARSER="${VENDORED_ADAPTER_ROOT}/strict-kv-metadata.py"
+VENDORED_ADAPTER_ROOT=""
+VENDORED_METADATA_PARSER=""
+VENDORED_ADAPTER_PIN=""
 MISSION_SCHEMA="${ROOT}/schemas/mission-manifest.schema.json"
 MISSION_SCHEMA_VALIDATOR="${ROOT}/tools/validate-mission-manifest.py"
 TMP_ROOT=""
@@ -46,12 +47,16 @@ SELECTED_INSTALLED_TARGET_SSH_KEY_TYPE=""
 : "${OURBOX_INSTALLED_TARGET_SSH_KEYSTORE_ROOT:=${DEFAULT_OURBOX_STATE_ROOT}/ourbox/installed-target-ssh-keys}"
 CONTAINER_CLI=""
 APPLICATION_SOURCE_RESOLUTIONS_JSON="{}"
+INSTALLER_SUBSTRATE_FILENAME=""
+AIRGAP_SELECTION_MODEL=""
+TARGET_SUPPORTS_APPLICATION_CATALOGS=0
+TARGET_SUPPORTS_INSTALLED_TARGET_SSH=0
 
 usage() {
   cat <<EOF
 Usage: $0 [options]
 
-Phase-one unified host-side mission prep for OurBox targets.
+Unified host-side mission prep for OurBox targets.
 
 Normal operator flow:
   $0
@@ -62,7 +67,7 @@ are available only behind explicit flags.
 
 Options:
   --target TARGET             Preselect the target type for the UI
-                              (currently only woodbox is supported)
+                              (woodbox or matchbox)
   --os-channel CHANNEL        Preferred OS channel for interactive selection or
                               non-interactive resolution when --os-ref is not set
                               (default: stable)
@@ -415,6 +420,13 @@ interactive_select_installed_target_ssh_key() {
 determine_installed_target_ssh_key() {
   disable_installed_target_ssh_key_selection
 
+  if [[ "${TARGET_SUPPORTS_INSTALLED_TARGET_SSH}" != "1" ]]; then
+    [[ -z "${INSTALLED_TARGET_SSH_KEY_NAME_REQUEST}" ]] || {
+      die "target '${TARGET}' does not support --installed-target-ssh-key-name"
+    }
+    return 0
+  fi
+
   if [[ -n "${INSTALLED_TARGET_SSH_KEY_NAME_REQUEST}" ]]; then
     select_installed_target_ssh_key_by_name "${INSTALLED_TARGET_SSH_KEY_NAME_REQUEST}"
     return 0
@@ -479,6 +491,7 @@ show_target_default_choice() {
   echo "Options:"
   echo "  [ENTER] Use default"
   echo "  1       woodbox"
+  echo "  2       matchbox"
   echo "  q       Quit"
   echo
 }
@@ -497,6 +510,9 @@ interactive_select_target() {
         ;;
       1)
         TARGET="woodbox"
+        ;;
+      2)
+        TARGET="matchbox"
         ;;
       q|Q)
         die "Mission compose aborted by user"
@@ -518,6 +534,148 @@ determine_target() {
   else
     TARGET="woodbox"
   fi
+}
+
+load_target_adapter_metadata() {
+  local adapter_dump=""
+  local adapter_path=""
+
+  VENDORED_ADAPTER_ROOT="${ROOT}/vendor/${TARGET}"
+  VENDORED_METADATA_PARSER="${VENDORED_ADAPTER_ROOT}/strict-kv-metadata.py"
+  VENDORED_ADAPTER_PIN="${ROOT}/vendor/${TARGET}.upstream.env"
+  adapter_path="${VENDORED_ADAPTER_ROOT}/adapter.json"
+
+  [[ -f "${adapter_path}" ]] || die "vendored adapter not found for target '${TARGET}': ${adapter_path}"
+  [[ -f "${VENDORED_METADATA_PARSER}" ]] || die "vendored metadata parser not found for target '${TARGET}': ${VENDORED_METADATA_PARSER}"
+
+  adapter_dump="$(
+    python3 - <<'PY' "${adapter_path}" "${TARGET}" "${OS_CHANNEL}"
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    adapter = json.load(handle)
+
+target = sys.argv[2]
+os_channel = sys.argv[3]
+
+if str(adapter.get("target_id", "")).strip() != target:
+    raise SystemExit(f"adapter target_id does not match requested target {target!r}")
+
+official = adapter.get("official") or {}
+os_tags = official.get("os_channel_tags") or {}
+installer_tags = official.get("installer_channel_tags") or {}
+if os_channel not in os_tags:
+    raise SystemExit(f"unsupported {target} os channel: {os_channel}")
+for lane in ("stable", "beta", "nightly", "exp-labs"):
+    if lane not in installer_tags:
+        raise SystemExit(f"adapter missing installer channel tag for {lane}")
+
+application_catalog_sources = official.get("application_catalog_sources")
+airgap_selection_model = str(adapter.get("airgap_selection_model", "")).strip()
+if isinstance(application_catalog_sources, list) and application_catalog_sources:
+    selection_model = "application-catalogs"
+elif airgap_selection_model == "published-airgap-bundle":
+    selection_model = "published-airgap-bundle"
+else:
+    raise SystemExit(
+        "adapter must declare either official.application_catalog_sources or airgap_selection_model=published-airgap-bundle"
+    )
+
+airgap_repo = ""
+airgap_catalog_tag = ""
+airgap_stable = ""
+airgap_beta = ""
+airgap_nightly = ""
+airgap_exp_labs = ""
+if selection_model == "published-airgap-bundle":
+    airgap_repo = str(official.get("airgap_bundle_repo", "")).strip()
+    airgap_catalog_tag = str(official.get("airgap_bundle_catalog_tag", "")).strip()
+    airgap_tags = official.get("airgap_bundle_channel_tags") or {}
+    if not airgap_repo or not airgap_catalog_tag:
+        raise SystemExit("published-airgap-bundle adapters must declare airgap_bundle_repo and airgap_bundle_catalog_tag")
+    for lane in ("stable", "beta", "nightly", "exp-labs"):
+        if lane not in airgap_tags:
+            raise SystemExit(f"adapter missing airgap bundle channel tag for {lane}")
+    airgap_stable = str(airgap_tags["stable"])
+    airgap_beta = str(airgap_tags["beta"])
+    airgap_nightly = str(airgap_tags["nightly"])
+    airgap_exp_labs = str(airgap_tags["exp-labs"])
+
+print("\n".join([
+    str(official["os_repo"]),
+    str(official["os_catalog_tag"]),
+    str(os_tags["stable"]),
+    str(os_tags["beta"]),
+    str(os_tags["nightly"]),
+    str(os_tags["exp-labs"]),
+    str(adapter["expected_os_artifact_type"]),
+    str(adapter["expected_airgap_arch"]),
+    str(official["installer_repo"]),
+    str(installer_tags["stable"]),
+    str(installer_tags["beta"]),
+    str(installer_tags["nightly"]),
+    str(installer_tags["exp-labs"]),
+    str(adapter.get("minimum_media_size_bytes", "")),
+    str(adapter.get("output_kind", "")),
+    json.dumps(adapter.get("runtime_prompts_kept", [])),
+    str(adapter.get("installer_substrate_payload_filename", "installer.iso")),
+    selection_model,
+    json.dumps(application_catalog_sources if isinstance(application_catalog_sources, list) else []),
+    airgap_repo,
+    airgap_catalog_tag,
+    airgap_stable,
+    airgap_beta,
+    airgap_nightly,
+    airgap_exp_labs,
+]))
+PY
+  )"
+
+  mapfile -t adapter_fields <<<"${adapter_dump}"
+  [[ "${#adapter_fields[@]}" -eq 25 ]] || die "failed to load vendored adapter metadata for target '${TARGET}'"
+
+  OS_REPO="${adapter_fields[0]}"
+  OS_CATALOG_TAG="${adapter_fields[1]}"
+  OS_CHANNEL_TAG_STABLE="${adapter_fields[2]}"
+  OS_CHANNEL_TAG_BETA="${adapter_fields[3]}"
+  OS_CHANNEL_TAG_NIGHTLY="${adapter_fields[4]}"
+  OS_CHANNEL_TAG_EXP_LABS="${adapter_fields[5]}"
+  EXPECTED_OS_ARTIFACT_TYPE="${adapter_fields[6]}"
+  EXPECTED_AIRGAP_ARCH="${adapter_fields[7]}"
+  INSTALLER_REPO="${adapter_fields[8]}"
+  INSTALLER_CHANNEL_TAG_STABLE="${adapter_fields[9]}"
+  INSTALLER_CHANNEL_TAG_BETA="${adapter_fields[10]}"
+  INSTALLER_CHANNEL_TAG_NIGHTLY="${adapter_fields[11]}"
+  INSTALLER_CHANNEL_TAG_EXP_LABS="${adapter_fields[12]}"
+  MINIMUM_MEDIA_SIZE_BYTES="${adapter_fields[13]}"
+  OUTPUT_KIND="${adapter_fields[14]}"
+  ADAPTER_RUNTIME_PROMPTS_JSON="${adapter_fields[15]}"
+  INSTALLER_SUBSTRATE_FILENAME="${adapter_fields[16]}"
+  AIRGAP_SELECTION_MODEL="${adapter_fields[17]}"
+  APPLICATION_CATALOG_SOURCES_JSON="${adapter_fields[18]}"
+  AIRGAP_REPO="${adapter_fields[19]}"
+  AIRGAP_CATALOG_TAG="${adapter_fields[20]}"
+  AIRGAP_CHANNEL_TAG_STABLE="${adapter_fields[21]}"
+  AIRGAP_CHANNEL_TAG_BETA="${adapter_fields[22]}"
+  AIRGAP_CHANNEL_TAG_NIGHTLY="${adapter_fields[23]}"
+  AIRGAP_CHANNEL_TAG_EXP_LABS="${adapter_fields[24]}"
+
+  TARGET_SUPPORTS_APPLICATION_CATALOGS=0
+  TARGET_SUPPORTS_INSTALLED_TARGET_SSH=0
+  case "${AIRGAP_SELECTION_MODEL}" in
+    application-catalogs)
+      TARGET_SUPPORTS_APPLICATION_CATALOGS=1
+      TARGET_SUPPORTS_INSTALLED_TARGET_SSH=1
+      ;;
+    published-airgap-bundle)
+      TARGET_SUPPORTS_APPLICATION_CATALOGS=0
+      TARGET_SUPPORTS_INSTALLED_TARGET_SSH=0
+      ;;
+    *)
+      die "unsupported adapter selection model for target '${TARGET}': ${AIRGAP_SELECTION_MODEL}"
+      ;;
+  esac
 }
 
 require_flash_path_or_explicit_mode() {
@@ -609,7 +767,6 @@ while [[ $# -gt 0 ]]; do
 done
 
 determine_target
-[[ "${TARGET}" == "woodbox" ]] || die "phase one only supports target 'woodbox'"
 [[ "${MISSION_ONLY}" == "0" || "${COMPOSE_ONLY}" == "0" ]] || die "--mission-only cannot be combined with --compose-only"
 [[ "${MISSION_ONLY}" == "0" || -z "${FLASH_DEVICE}" ]] || die "--flash-device cannot be combined with --mission-only"
 [[ "${COMPOSE_ONLY}" == "0" || -z "${FLASH_DEVICE}" ]] || die "--flash-device cannot be combined with --compose-only"
@@ -617,6 +774,7 @@ determine_target
 if [[ -z "${OUTPUT_DIR}" && ( "${MISSION_ONLY}" == "1" || "${COMPOSE_ONLY}" == "1" ) ]]; then
   OUTPUT_DIR="$(default_output_dir_for_target "${TARGET}")"
 fi
+load_target_adapter_metadata
 
 need_cmd python3
 need_cmd git
@@ -625,10 +783,8 @@ need_cmd sha256sum
 need_cmd tar
 need_cmd find
 
-[[ -f "${VENDORED_ADAPTER_ROOT}/adapter.json" ]] || die "vendored Woodbox adapter not found: ${VENDORED_ADAPTER_ROOT}/adapter.json"
-[[ -f "${VENDORED_ADAPTER_ROOT}/compose-media.sh" ]] || die "vendored Woodbox compose script not found: ${VENDORED_ADAPTER_ROOT}/compose-media.sh"
-[[ -f "${VENDORED_ADAPTER_ROOT}/validate-media.sh" ]] || die "vendored Woodbox validate script not found: ${VENDORED_ADAPTER_ROOT}/validate-media.sh"
-[[ -f "${VENDORED_METADATA_PARSER}" ]] || die "vendored Woodbox metadata parser not found: ${VENDORED_METADATA_PARSER}"
+[[ -f "${VENDORED_ADAPTER_ROOT}/compose-media.sh" ]] || die "vendored compose script not found for target '${TARGET}': ${VENDORED_ADAPTER_ROOT}/compose-media.sh"
+[[ -f "${VENDORED_ADAPTER_ROOT}/validate-media.sh" ]] || die "vendored validate script not found for target '${TARGET}': ${VENDORED_ADAPTER_ROOT}/validate-media.sh"
 [[ -f "${MISSION_SCHEMA}" ]] || die "mission schema not found: ${MISSION_SCHEMA}"
 [[ -f "${MISSION_SCHEMA_VALIDATOR}" ]] || die "mission schema validator not found: ${MISSION_SCHEMA_VALIDATOR}"
 
@@ -640,82 +796,12 @@ require_flash_path_or_explicit_mode
 
 ADAPTER_SOURCE_REPO="vendored-local"
 ADAPTER_SOURCE_REVISION="unknown"
-VENDORED_PIN="${ROOT}/vendor/woodbox.upstream.env"
-if [[ -f "${VENDORED_PIN}" ]]; then
+if [[ -f "${VENDORED_ADAPTER_PIN}" ]]; then
   # shellcheck disable=SC1090
-  source "${VENDORED_PIN}"
+  source "${VENDORED_ADAPTER_PIN}"
   ADAPTER_SOURCE_REPO="${SOURCE_REPO:-${ADAPTER_SOURCE_REPO}}"
   ADAPTER_SOURCE_REVISION="${SOURCE_REVISION:-${ADAPTER_SOURCE_REVISION}}"
 fi
-
-adapter_dump="$(
-  python3 - <<'PY' "${VENDORED_ADAPTER_ROOT}/adapter.json" "${OS_CHANNEL}" "${AIRGAP_CHANNEL}"
-import json
-import sys
-
-with open(sys.argv[1], "r", encoding="utf-8") as handle:
-    adapter = json.load(handle)
-
-official = adapter["official"]
-os_channel = sys.argv[2]
-
-os_tags = official["os_channel_tags"]
-if os_channel not in os_tags:
-    raise SystemExit(f"unsupported woodbox os channel: {os_channel}")
-
-installer_tags = official["installer_channel_tags"]
-catalog_sources = official.get("application_catalog_sources")
-if not isinstance(catalog_sources, list) or not catalog_sources:
-    raise SystemExit("adapter must declare official.application_catalog_sources")
-for source in catalog_sources:
-    if not str(source.get("catalog_id", "")).strip():
-        raise SystemExit("application_catalog_sources entries must declare catalog_id")
-    if not str(source.get("catalog_name", "")).strip():
-        raise SystemExit("application_catalog_sources entries must declare catalog_name")
-    if not str(source.get("artifact_ref", "")).strip():
-        raise SystemExit("application_catalog_sources entries must declare artifact_ref")
-
-values = [
-    official["os_repo"],
-    official["os_catalog_tag"],
-    os_tags["stable"],
-    os_tags["beta"],
-    os_tags["nightly"],
-    os_tags["exp-labs"],
-    adapter["expected_os_artifact_type"],
-    adapter["expected_airgap_arch"],
-    official["installer_repo"],
-    installer_tags["stable"],
-    installer_tags["beta"],
-    installer_tags["nightly"],
-    installer_tags["exp-labs"],
-    str(adapter.get("minimum_media_size_bytes", "")),
-    adapter.get("output_kind", ""),
-    json.dumps(adapter.get("runtime_prompts_kept", [])),
-    json.dumps(catalog_sources),
-]
-print("\n".join(values))
-PY
-)"
-mapfile -t adapter_fields <<<"${adapter_dump}"
-[[ "${#adapter_fields[@]}" -eq 17 ]] || die "failed to load vendored woodbox adapter metadata"
-OS_REPO="${adapter_fields[0]}"
-OS_CATALOG_TAG="${adapter_fields[1]}"
-OS_CHANNEL_TAG_STABLE="${adapter_fields[2]}"
-OS_CHANNEL_TAG_BETA="${adapter_fields[3]}"
-OS_CHANNEL_TAG_NIGHTLY="${adapter_fields[4]}"
-OS_CHANNEL_TAG_EXP_LABS="${adapter_fields[5]}"
-EXPECTED_OS_ARTIFACT_TYPE="${adapter_fields[6]}"
-EXPECTED_AIRGAP_ARCH="${adapter_fields[7]}"
-INSTALLER_REPO="${adapter_fields[8]}"
-INSTALLER_CHANNEL_TAG_STABLE="${adapter_fields[9]}"
-INSTALLER_CHANNEL_TAG_BETA="${adapter_fields[10]}"
-INSTALLER_CHANNEL_TAG_NIGHTLY="${adapter_fields[11]}"
-INSTALLER_CHANNEL_TAG_EXP_LABS="${adapter_fields[12]}"
-MINIMUM_MEDIA_SIZE_BYTES="${adapter_fields[13]}"
-OUTPUT_KIND="${adapter_fields[14]}"
-ADAPTER_RUNTIME_PROMPTS_JSON="${adapter_fields[15]}"
-APPLICATION_CATALOG_SOURCES_JSON="${adapter_fields[16]}"
 
 case "${OURBOX_CACHE_REUSE_POLICY}" in
   ask|always|never) ;;
@@ -1145,17 +1231,18 @@ selected_installer_release_channel() {
 
 verify_installer_substrate_cache_dir() {
   local cache_dir="$1"
-  local iso_path="${cache_dir}/installer.iso"
-  local sha_path="${cache_dir}/installer.iso.sha256"
+  local payload_name="$2"
+  local payload_path="${cache_dir}/${payload_name}"
+  local sha_path="${cache_dir}/${payload_name}.sha256"
   local expected=""
   local actual=""
 
-  [[ -f "${iso_path}" ]] || die "installer substrate missing installer.iso in ${cache_dir}"
-  [[ -f "${sha_path}" ]] || die "installer substrate missing installer.iso.sha256 in ${cache_dir}"
+  [[ -f "${payload_path}" ]] || die "installer substrate missing ${payload_name} in ${cache_dir}"
+  [[ -f "${sha_path}" ]] || die "installer substrate missing ${payload_name}.sha256 in ${cache_dir}"
   expected="$(awk 'NF>=1 {print $1; exit}' "${sha_path}")"
   expected="${expected,,}"
   [[ "${expected}" =~ ^[0-9a-f]{64}$ ]] || die "invalid sha256 in ${sha_path}"
-  actual="$(sha256sum "${iso_path}" | awk '{print $1}')"
+  actual="$(sha256sum "${payload_path}" | awk '{print $1}')"
   [[ "${expected}" == "${actual}" ]] || die "installer substrate sha mismatch (expected ${expected}, got ${actual})"
 }
 
@@ -1439,7 +1526,6 @@ resolve_os_channel_ref() {
   local catalog_cache_dir=""
   local catalog_tsv=""
   local catalog_ref=""
-  local channel_tag_ref="${OS_REPO}:$(os_channel_tag_for "${channel}")"
 
   if try_cache_pull_oci_artifact "${OS_REPO}:${OS_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
     catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
@@ -1452,14 +1538,10 @@ resolve_os_channel_ref() {
         return 0
       fi
     fi
-    log "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} had no valid pinned row for channel ${channel}; falling back to channel tag"
-  else
-    log "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} unavailable; falling back to channel tag"
+    die "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} had no valid pinned row for channel ${channel}"
   fi
 
-  SELECTED_OS_SELECTION_SOURCE="channel-tag"
-  SELECTED_OS_RELEASE_CHANNEL="${channel}"
-  SELECTED_OS_REF="${channel_tag_ref}"
+  die "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} is unavailable; cannot resolve channel ${channel}"
 }
 
 show_os_default_choice() {
@@ -1657,7 +1739,6 @@ resolve_airgap_channel_ref() {
   local catalog_cache_dir=""
   local catalog_tsv=""
   local catalog_ref=""
-  local channel_tag_ref="${AIRGAP_REPO}:$(airgap_channel_tag_for "${channel}")"
 
   if try_cache_pull_oci_artifact "${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
     catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
@@ -1671,15 +1752,10 @@ resolve_airgap_channel_ref() {
         return 0
       fi
     fi
-    log "Application catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} had no valid pinned row for lane ${channel} and contract ${required_contract_digest}; falling back to lane tag"
-  else
-    log "Application catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} unavailable; falling back to lane tag"
+    die "application bundle catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} had no valid pinned row for lane ${channel} and contract ${required_contract_digest}"
   fi
 
-  SELECTED_AIRGAP_SELECTION_MODE="host-selected"
-  SELECTED_AIRGAP_SELECTION_SOURCE="channel-tag"
-  SELECTED_AIRGAP_RELEASE_CHANNEL="${channel}"
-  SELECTED_AIRGAP_REF="${channel_tag_ref}"
+  die "application bundle catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} is unavailable; cannot resolve lane ${channel}"
 }
 
 resolve_default_airgap_ref() {
@@ -1694,11 +1770,7 @@ resolve_default_airgap_ref() {
   fi
 
   if [[ -z "${AIRGAP_CHANNEL}" ]]; then
-    SELECTED_AIRGAP_SELECTION_MODE="baked-from-selected-os"
-    SELECTED_AIRGAP_SELECTION_SOURCE="baked-os-payload"
-    SELECTED_AIRGAP_RELEASE_CHANNEL=""
-    SELECTED_AIRGAP_REF="${BAKED_AIRGAP_REF}"
-    return 0
+    AIRGAP_CHANNEL="stable"
   fi
 
   resolve_airgap_channel_ref "${required_contract_digest}" "${AIRGAP_CHANNEL}"
@@ -1708,15 +1780,15 @@ show_airgap_default_choice() {
   local ref="$1"
 
   echo
-  echo "Host-side application catalog selection"
+  echo "Host-side application bundle selection"
   echo "Default source : ${SELECTED_AIRGAP_SELECTION_SOURCE:-pending}"
-  echo "Default: use application catalog bundle '${ref}'"
+  echo "Default: use application bundle '${ref}'"
   echo "Options:"
   echo "  [ENTER] Use default"
   echo "  c       Choose lane (prefers newest contract-matching catalog row for that lane)"
-  echo "  l       List published catalog bundles"
+  echo "  l       List published bundles"
   echo "  r       Enter custom OCI ref (tag or digest)"
-  echo "  o       Override application catalog repo (custom registry/fork)"
+  echo "  o       Override application bundle repo (custom registry/fork)"
   echo "  q       Quit"
   echo
 }
@@ -1726,7 +1798,7 @@ choose_airgap_channel_interactive() {
   local pick=""
   local custom_tag=""
 
-  echo "Application catalog lanes:"
+  echo "Application bundle lanes:"
   echo "  1) stable (${AIRGAP_CHANNEL_TAG_STABLE}) (recommended)"
   echo "  2) beta (${AIRGAP_CHANNEL_TAG_BETA})"
   echo "  3) nightly (${AIRGAP_CHANNEL_TAG_NIGHTLY})"
@@ -1746,7 +1818,7 @@ choose_airgap_channel_interactive() {
         return 1
       }
       SELECTED_AIRGAP_SELECTION_MODE="host-selected"
-      SELECTED_AIRGAP_SELECTION_SOURCE="channel-tag"
+      SELECTED_AIRGAP_SELECTION_SOURCE="operator-override"
       SELECTED_AIRGAP_RELEASE_CHANNEL=""
       SELECTED_AIRGAP_REF="${AIRGAP_REPO}:${custom_tag}"
       return 0
@@ -1774,25 +1846,25 @@ select_airgap_ref_from_catalog_interactive() {
   local -a entries=()
 
   if ! try_cache_pull_oci_artifact "${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
-    log "Application catalog registry listing unavailable; skipping list."
+    log "Application bundle catalog listing unavailable; skipping list."
     return 1
   fi
 
   catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
   mapfile -t entries < <(list_airgap_catalog_entries "${catalog_tsv}" "${required_contract_digest}" "${EXPECTED_AIRGAP_ARCH}")
   if [[ "${#entries[@]}" -eq 0 ]]; then
-    log "Application catalog listing (${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}) contained no matching rows for arch=${EXPECTED_AIRGAP_ARCH} contract=${required_contract_digest}."
+    log "Application bundle catalog (${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}) contained no matching rows for arch=${EXPECTED_AIRGAP_ARCH} contract=${required_contract_digest}."
     return 1
   fi
 
-  paginate_catalog_entries_interactive "Application catalog bundles (${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG})" entries render_airgap_catalog_entry chosen || return 1
+  paginate_catalog_entries_interactive "Application bundles (${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG})" entries render_airgap_catalog_entry chosen || return 1
   IFS=$'\t' read -r channel tag created version contract pinned_ref <<<"${chosen}"
   AIRGAP_CHANNEL="$(normalize_release_channel "${channel}")"
   SELECTED_AIRGAP_SELECTION_MODE="host-selected"
   SELECTED_AIRGAP_SELECTION_SOURCE="catalog"
   SELECTED_AIRGAP_RELEASE_CHANNEL="${AIRGAP_CHANNEL}"
   SELECTED_AIRGAP_REF="${pinned_ref}"
-  log "Selected application catalog bundle ${SELECTED_AIRGAP_REF} (lane=${AIRGAP_CHANNEL}, version=${version}, contract=${contract})"
+  log "Selected application bundle ${SELECTED_AIRGAP_REF} (lane=${AIRGAP_CHANNEL}, version=${version}, contract=${contract})"
 }
 
 prompt_custom_airgap_ref_interactive() {
@@ -1815,7 +1887,7 @@ override_airgap_repo_interactive() {
   local next_catalog="catalog-${EXPECTED_AIRGAP_ARCH}"
   local user_catalog=""
 
-  read -r -p "Enter OCI repo (e.g., ghcr.io/org/application-catalog): " next_repo
+  read -r -p "Enter OCI repo (e.g., ghcr.io/org/application-bundle): " next_repo
   [[ -n "${next_repo}" ]] || {
     log "Repository cannot be empty."
     return 1
@@ -1833,7 +1905,7 @@ override_airgap_repo_interactive() {
     AIRGAP_CHANNEL="stable"
   fi
 
-  log "Application catalog repo override set to ${AIRGAP_REPO}"
+  log "Application bundle repo override set to ${AIRGAP_REPO}"
 }
 
 interactive_select_airgap_ref() {
@@ -3141,6 +3213,106 @@ for conflict in conflicts:
 PY
 }
 
+stage_selected_airgap_bundle() {
+  local airgap_cache_dir=""
+  local pulled_bundle=""
+  local pulled_bundle_sha=""
+  local expected_bundle_sha=""
+  local actual_bundle_sha=""
+  local extracted_dir="${TMP_ROOT}/selected-airgap-bundle"
+  local manifest_dump=""
+  local -a manifest_fields=()
+
+  cache_pull_oci_artifact "${SELECTED_AIRGAP_REF}" "${CACHE_REUSE_ENABLED}" airgap_cache_dir
+  SELECTED_AIRGAP_DIGEST="${OURBOX_CACHE_LAST_DIGEST}"
+  SELECTED_AIRGAP_PINNED_REF="${OURBOX_CACHE_LAST_PINNED_REF}"
+  log_resolved_artifact_ref "application bundle" "${SELECTED_AIRGAP_REF}" "${SELECTED_AIRGAP_PINNED_REF}"
+
+  pulled_bundle="$(find_pulled_file "${airgap_cache_dir}" "airgap-platform.tar.gz")"
+  [[ -f "${pulled_bundle}" ]] || die "cached application bundle missing airgap-platform.tar.gz: ${airgap_cache_dir}"
+  pulled_bundle_sha="${pulled_bundle}.sha256"
+  if [[ -f "${pulled_bundle_sha}" ]]; then
+    expected_bundle_sha="$(awk 'NF>=1 {print $1; exit}' "${pulled_bundle_sha}")"
+    expected_bundle_sha="${expected_bundle_sha,,}"
+    [[ "${expected_bundle_sha}" =~ ^[0-9a-f]{64}$ ]] || die "invalid sha256 in ${pulled_bundle_sha}"
+    actual_bundle_sha="$(sha256_file "${pulled_bundle}")"
+    [[ "${actual_bundle_sha}" == "${expected_bundle_sha}" ]] || die "application bundle sha mismatch for ${SELECTED_AIRGAP_PINNED_REF}"
+  fi
+
+  rm -rf "${extracted_dir}"
+  mkdir -p "${extracted_dir}"
+  tar -xzf "${pulled_bundle}" -C "${extracted_dir}"
+  [[ -f "${extracted_dir}/manifest.env" ]] || die "application bundle tarball missing manifest.env: ${SELECTED_AIRGAP_PINNED_REF}"
+  [[ -x "${extracted_dir}/k3s/k3s" ]] || die "application bundle tarball missing k3s/k3s: ${SELECTED_AIRGAP_PINNED_REF}"
+  [[ -f "${extracted_dir}/k3s/k3s-airgap-images-${EXPECTED_AIRGAP_ARCH}.tar" ]] \
+    || die "application bundle tarball missing k3s/k3s-airgap-images-${EXPECTED_AIRGAP_ARCH}.tar: ${SELECTED_AIRGAP_PINNED_REF}"
+  [[ -f "${extracted_dir}/platform/images.lock.json" ]] || die "application bundle tarball missing platform/images.lock.json: ${SELECTED_AIRGAP_PINNED_REF}"
+  [[ -f "${extracted_dir}/platform/profile.env" ]] || die "application bundle tarball missing platform/profile.env: ${SELECTED_AIRGAP_PINNED_REF}"
+  find "${extracted_dir}/platform/images" -maxdepth 1 -type f -name '*.tar' | grep -q . \
+    || die "application bundle tarball missing platform image tar payloads: ${SELECTED_AIRGAP_PINNED_REF}"
+
+  manifest_dump="$(
+    python3 "${VENDORED_METADATA_PARSER}" "${extracted_dir}/manifest.env" \
+      --allow OURBOX_AIRGAP_PLATFORM_SCHEMA \
+      --allow OURBOX_AIRGAP_PLATFORM_KIND \
+      --allow OURBOX_AIRGAP_PLATFORM_SOURCE \
+      --allow OURBOX_AIRGAP_PLATFORM_REVISION \
+      --allow OURBOX_AIRGAP_PLATFORM_VERSION \
+      --allow OURBOX_AIRGAP_PLATFORM_CREATED \
+      --allow OURBOX_PLATFORM_CONTRACT_REF \
+      --allow OURBOX_PLATFORM_CONTRACT_DIGEST \
+      --allow AIRGAP_PLATFORM_ARCH \
+      --allow K3S_VERSION \
+      --allow OURBOX_PLATFORM_PROFILE \
+      --allow OURBOX_PLATFORM_IMAGES_LOCK_PATH \
+      --allow OURBOX_PLATFORM_IMAGES_LOCK_SHA256 \
+      --require OURBOX_AIRGAP_PLATFORM_SOURCE \
+      --require OURBOX_AIRGAP_PLATFORM_REVISION \
+      --require OURBOX_AIRGAP_PLATFORM_VERSION \
+      --require OURBOX_AIRGAP_PLATFORM_CREATED \
+      --require OURBOX_PLATFORM_CONTRACT_DIGEST \
+      --require AIRGAP_PLATFORM_ARCH \
+      --require K3S_VERSION \
+      --require OURBOX_PLATFORM_PROFILE \
+      --require OURBOX_PLATFORM_IMAGES_LOCK_PATH \
+      --require OURBOX_PLATFORM_IMAGES_LOCK_SHA256 \
+      --print OURBOX_AIRGAP_PLATFORM_SOURCE \
+      --print OURBOX_AIRGAP_PLATFORM_REVISION \
+      --print OURBOX_AIRGAP_PLATFORM_VERSION \
+      --print OURBOX_AIRGAP_PLATFORM_CREATED \
+      --print OURBOX_PLATFORM_CONTRACT_REF \
+      --print OURBOX_PLATFORM_CONTRACT_DIGEST \
+      --print AIRGAP_PLATFORM_ARCH \
+      --print K3S_VERSION \
+      --print OURBOX_PLATFORM_PROFILE \
+      --print OURBOX_PLATFORM_IMAGES_LOCK_SHA256
+  )"
+  mapfile -t manifest_fields <<<"${manifest_dump}"
+  [[ "${#manifest_fields[@]}" -eq 10 ]] || die "failed to parse application bundle manifest metadata: ${SELECTED_AIRGAP_PINNED_REF}"
+
+  [[ "${manifest_fields[5]}" == "${PLATFORM_CONTRACT_DIGEST}" ]] \
+    || die "application bundle contract digest mismatch for ${SELECTED_AIRGAP_PINNED_REF}: expected ${PLATFORM_CONTRACT_DIGEST}, got ${manifest_fields[5]}"
+  [[ "${manifest_fields[6]}" == "${EXPECTED_AIRGAP_ARCH}" ]] \
+    || die "application bundle arch mismatch for ${SELECTED_AIRGAP_PINNED_REF}: expected ${EXPECTED_AIRGAP_ARCH}, got ${manifest_fields[6]}"
+
+  cp -f "${pulled_bundle}" "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz"
+  printf '%s  %s\n' "$(sha256_file "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz")" "airgap-platform.tar.gz" \
+    > "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz.sha256"
+  cp -f "${extracted_dir}/manifest.env" "${AIRGAP_STAGE_DIR}/manifest.env"
+  printf '%s\n' "${SELECTED_AIRGAP_PINNED_REF}" > "${AIRGAP_STAGE_DIR}/artifact.ref"
+
+  SELECTED_AIRGAP_SOURCE="${manifest_fields[0]}"
+  SELECTED_AIRGAP_REVISION="${manifest_fields[1]}"
+  SELECTED_AIRGAP_VERSION="${manifest_fields[2]}"
+  SELECTED_AIRGAP_CREATED="${manifest_fields[3]}"
+  SELECTED_AIRGAP_PLATFORM_CONTRACT_REF="${manifest_fields[4]}"
+  SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST="${manifest_fields[5]}"
+  SELECTED_AIRGAP_ARCH="${manifest_fields[6]}"
+  SELECTED_AIRGAP_K3S_VERSION="${manifest_fields[7]}"
+  SELECTED_AIRGAP_PROFILE="${manifest_fields[8]}"
+  SELECTED_AIRGAP_IMAGES_LOCK_SHA256="${manifest_fields[9]}"
+}
+
 synthesize_selected_application_bundle() {
   local extracted_payload_root="${TMP_ROOT}/os-payload-extract"
   local base_airgap_dir="${extracted_payload_root}/airgap"
@@ -3321,16 +3493,6 @@ os_meta_dump="$(
     --allow GITHUB_RUN_ATTEMPT \
     --require OS_ARTIFACT_TYPE \
     --require OURBOX_PLATFORM_CONTRACT_DIGEST \
-    --require OURBOX_AIRGAP_PLATFORM_REF \
-    --require OURBOX_AIRGAP_PLATFORM_DIGEST \
-    --require OURBOX_AIRGAP_PLATFORM_SOURCE \
-    --require OURBOX_AIRGAP_PLATFORM_REVISION \
-    --require OURBOX_AIRGAP_PLATFORM_VERSION \
-    --require OURBOX_AIRGAP_PLATFORM_CREATED \
-    --require OURBOX_AIRGAP_PLATFORM_ARCH \
-    --require OURBOX_AIRGAP_PLATFORM_PROFILE \
-    --require OURBOX_AIRGAP_PLATFORM_K3S_VERSION \
-    --require OURBOX_AIRGAP_PLATFORM_IMAGES_LOCK_SHA256 \
     --print OS_ARTIFACT_TYPE \
     --print OURBOX_PLATFORM_CONTRACT_DIGEST \
     --print OURBOX_PLATFORM_CONTRACT_SOURCE \
@@ -3378,35 +3540,41 @@ OURBOX_SKU="${os_meta_fields[19]}"
 
 [[ "${OS_ARTIFACT_TYPE}" == "${EXPECTED_OS_ARTIFACT_TYPE}" ]] || die "unexpected OS artifact type in ${OS_META_ENV}: ${OS_ARTIFACT_TYPE}"
 is_sha256_digest "${PLATFORM_CONTRACT_DIGEST}" || die "invalid platform contract digest in ${OS_META_ENV}"
-is_pinned_ref "${BAKED_AIRGAP_REF}" || die "selected OS payload is missing a pinned baked airgap ref"
-is_sha256_digest "${BAKED_AIRGAP_DIGEST}" || die "selected OS payload is missing a baked airgap digest"
-[[ "${BAKED_AIRGAP_ARCH}" == "${EXPECTED_AIRGAP_ARCH}" ]] || die "selected OS payload baked airgap arch mismatch: ${BAKED_AIRGAP_ARCH}"
 
 APPLICATION_SOURCE_RESOLUTIONS_JSON="$(parse_application_source_resolutions_spec "${APP_SOURCE_RESOLUTIONS_SPEC}")"
-
-determine_application_catalog_sources
 SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL="$(selected_installer_release_channel)"
 SELECTED_INSTALLER_SUBSTRATE_REF="${INSTALLER_REPO}:$(installer_channel_tag_for "${SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL}")"
 
-selected_catalog_cache_refs=()
-while IFS=$'\t' read -r _requested_catalog_id _requested_catalog_name requested_artifact_ref; do
-  [[ -n "${requested_artifact_ref}" ]] && selected_catalog_cache_refs+=("${requested_artifact_ref}")
-done < <(extract_selected_application_catalog_source_entries)
+if [[ "${TARGET_SUPPORTS_APPLICATION_CATALOGS}" == "1" ]]; then
+  is_pinned_ref "${BAKED_AIRGAP_REF}" || die "selected OS payload is missing a pinned baked application bundle ref"
+  is_sha256_digest "${BAKED_AIRGAP_DIGEST}" || die "selected OS payload is missing a baked application bundle digest"
+  [[ "${BAKED_AIRGAP_ARCH}" == "${EXPECTED_AIRGAP_ARCH}" ]] || die "selected OS payload baked application bundle arch mismatch: ${BAKED_AIRGAP_ARCH}"
 
-maybe_confirm_cache_reuse "the selected mission artifacts" "${SELECTED_OS_REF}" "${selected_catalog_cache_refs[@]}" "${SELECTED_INSTALLER_SUBSTRATE_REF}"
-prepare_merged_application_catalog "catalog-defaults" "[]"
-determine_application_selection
-prepare_merged_application_catalog "${SELECTED_APPLICATION_SELECTION_MODE}" "${SELECTED_APPLICATION_IDS_JSON}"
-log_application_catalog_merge_summary
+  determine_application_catalog_sources
+  selected_catalog_cache_refs=()
+  while IFS=$'\t' read -r _requested_catalog_id _requested_catalog_name requested_artifact_ref; do
+    [[ -n "${requested_artifact_ref}" ]] && selected_catalog_cache_refs+=("${requested_artifact_ref}")
+  done < <(extract_selected_application_catalog_source_entries)
+
+  maybe_confirm_cache_reuse "the selected mission artifacts" "${SELECTED_OS_REF}" "${selected_catalog_cache_refs[@]}" "${SELECTED_INSTALLER_SUBSTRATE_REF}"
+  prepare_merged_application_catalog "catalog-defaults" "[]"
+  determine_application_selection
+  prepare_merged_application_catalog "${SELECTED_APPLICATION_SELECTION_MODE}" "${SELECTED_APPLICATION_IDS_JSON}"
+  log_application_catalog_merge_summary
+else
+  determine_airgap_ref "${PLATFORM_CONTRACT_DIGEST}"
+  maybe_confirm_cache_reuse "the selected mission artifacts" "${SELECTED_OS_REF}" "${SELECTED_AIRGAP_REF}" "${SELECTED_INSTALLER_SUBSTRATE_REF}"
+fi
+
 determine_installed_target_ssh_key
 
 cache_pull_oci_artifact "${SELECTED_INSTALLER_SUBSTRATE_REF}" "${CACHE_REUSE_ENABLED}" INSTALLER_SUBSTRATE_CACHE_DIR
 SELECTED_INSTALLER_SUBSTRATE_DIGEST="${OURBOX_CACHE_LAST_DIGEST}"
 SELECTED_INSTALLER_SUBSTRATE_PINNED_REF="${OURBOX_CACHE_LAST_PINNED_REF}"
 log_resolved_artifact_ref "installer substrate" "${SELECTED_INSTALLER_SUBSTRATE_REF}" "${SELECTED_INSTALLER_SUBSTRATE_PINNED_REF}"
-verify_installer_substrate_cache_dir "${INSTALLER_SUBSTRATE_CACHE_DIR}"
-INSTALLER_SUBSTRATE_ISO="$(find_pulled_file "${INSTALLER_SUBSTRATE_CACHE_DIR}" "installer.iso")"
-[[ -f "${INSTALLER_SUBSTRATE_ISO}" ]] || die "cached installer substrate missing installer.iso: ${INSTALLER_SUBSTRATE_CACHE_DIR}"
+verify_installer_substrate_cache_dir "${INSTALLER_SUBSTRATE_CACHE_DIR}" "${INSTALLER_SUBSTRATE_FILENAME}"
+INSTALLER_SUBSTRATE_PATH="$(find_pulled_file "${INSTALLER_SUBSTRATE_CACHE_DIR}" "${INSTALLER_SUBSTRATE_FILENAME}")"
+[[ -f "${INSTALLER_SUBSTRATE_PATH}" ]] || die "cached installer substrate missing ${INSTALLER_SUBSTRATE_FILENAME}: ${INSTALLER_SUBSTRATE_CACHE_DIR}"
 
 COMPOSER_REVISION="$(git -C "${ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
 if [[ -n "$(git -C "${ROOT}" status --short 2>/dev/null || true)" ]]; then
@@ -3427,10 +3595,14 @@ cp -f "${OS_PAYLOAD_SHA_FILE}" "${OS_STAGE_DIR}/os-payload.tar.gz.sha256"
 cp -f "${OS_META_ENV}" "${OS_STAGE_DIR}/os.meta.env"
 printf '%s\n' "${SELECTED_OS_PINNED_REF}" > "${OS_STAGE_DIR}/artifact.ref"
 
-synthesize_selected_application_bundle
-if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
-  cp -f "${MERGED_APPLICATION_CATALOG_FILE}" "${AIRGAP_STAGE_DIR}/catalog.json"
-  cp -f "${MERGED_SELECTED_APPLICATIONS_FILE}" "${AIRGAP_STAGE_DIR}/selected-apps.json"
+if [[ "${TARGET_SUPPORTS_APPLICATION_CATALOGS}" == "1" ]]; then
+  synthesize_selected_application_bundle
+  if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
+    cp -f "${MERGED_APPLICATION_CATALOG_FILE}" "${AIRGAP_STAGE_DIR}/catalog.json"
+    cp -f "${MERGED_SELECTED_APPLICATIONS_FILE}" "${AIRGAP_STAGE_DIR}/selected-apps.json"
+  fi
+else
+  stage_selected_airgap_bundle
 fi
 stage_selected_installed_target_ssh_artifacts "${MISSION_DIR}"
 validate_staged_installed_target_ssh_artifacts "${MISSION_DIR}"
@@ -3451,6 +3623,18 @@ export APPLICATION_CATALOG_PRESENT APPLICATION_CATALOG_ID APPLICATION_CATALOG_NA
 export SELECTED_APPLICATION_SELECTION_MODE SELECTED_APPLICATION_IDS_JSON MERGED_APPLICATION_SUMMARY_FILE
 export SELECTED_INSTALLED_TARGET_SSH_MODE SELECTED_INSTALLED_TARGET_SSH_KEY_NAME
 export SELECTED_INSTALLED_TARGET_SSH_PUBLIC_KEY_FINGERPRINT SELECTED_INSTALLED_TARGET_SSH_KEY_TYPE
+export ADAPTER_JSON_RELPATH="vendor/${TARGET}/adapter.json"
+case "${TARGET}" in
+  woodbox)
+    export MISSION_COMPOSE_STRATEGY="woodbox-fat-iso-with-host-selected-os-application-catalog-and-app-selection"
+    ;;
+  matchbox)
+    export MISSION_COMPOSE_STRATEGY="matchbox-fat-image-with-host-selected-os-and-airgap"
+    ;;
+  *)
+    die "unsupported target during mission-manifest generation: ${TARGET}"
+    ;;
+esac
 
 python3 - <<'PY'
 import hashlib
@@ -3505,7 +3689,7 @@ manifest = {
     "adapter": {
         "source_repo": os.environ["ADAPTER_SOURCE_REPO"],
         "source_revision": os.environ["ADAPTER_SOURCE_REVISION"],
-        "adapter_json_relpath": "vendor/woodbox/adapter.json",
+        "adapter_json_relpath": os.environ["ADAPTER_JSON_RELPATH"],
         "runtime_prompts_kept": runtime_prompts,
     },
     "operator_mode": {
@@ -3514,7 +3698,7 @@ manifest = {
         "prompt_identity_on_target": True,
     },
     "mission_media": {
-      "compose_strategy": "woodbox-fat-iso-with-host-selected-os-application-catalog-and-app-selection",
+      "compose_strategy": os.environ["MISSION_COMPOSE_STRATEGY"],
       "mission_only": os.environ["MISSION_ONLY"] == "1",
     },
     "substrate": {
@@ -3605,10 +3789,15 @@ bash "${VENDORED_ADAPTER_ROOT}/validate-media.sh" \
   --os-meta-env "${OS_STAGE_DIR}/os.meta.env"
 
 log "Selected OS artifact: ${SELECTED_OS_PINNED_REF} (${SELECTED_OS_SELECTION_SOURCE})"
-log "Selected application catalogs: ${SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY}"
-log "Synthesized application bundle: ${SELECTED_AIRGAP_PINNED_REF} (${SELECTED_AIRGAP_SELECTION_SOURCE})"
+if [[ "${TARGET_SUPPORTS_APPLICATION_CATALOGS}" == "1" ]]; then
+  log "Selected application catalogs: ${SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY}"
+  log "Synthesized application bundle: ${SELECTED_AIRGAP_PINNED_REF} (${SELECTED_AIRGAP_SELECTION_SOURCE})"
+fi
 if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
   log "Selected applications: ${SELECTED_APPLICATION_IDS_DISPLAY} (${SELECTED_APPLICATION_SELECTION_MODE})"
+fi
+if [[ "${TARGET_SUPPORTS_APPLICATION_CATALOGS}" != "1" ]]; then
+  log "Selected application bundle: ${SELECTED_AIRGAP_PINNED_REF} (${SELECTED_AIRGAP_SELECTION_SOURCE})"
 fi
 log_installed_target_ssh_selection_summary
 log "Selected installer substrate: ${SELECTED_INSTALLER_SUBSTRATE_PINNED_REF} (${SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL})"
@@ -3649,17 +3838,36 @@ compose_cmd=(
   --mission-dir "${MISSION_DIR}"
   --os-payload "${OS_STAGE_DIR}/os-payload.tar.gz"
   --os-meta-env "${OS_STAGE_DIR}/os.meta.env"
-  --substrate-iso "${INSTALLER_SUBSTRATE_ISO}"
   --output-dir "${COMPOSE_OUTPUT_DIR}"
 )
+case "${TARGET}" in
+  woodbox)
+    compose_cmd+=(--substrate-iso "${INSTALLER_SUBSTRATE_PATH}")
+    ;;
+  matchbox)
+    compose_cmd+=(--substrate-artifact "${INSTALLER_SUBSTRATE_PATH}")
+    ;;
+  *)
+    die "unsupported target during media compose: ${TARGET}"
+    ;;
+esac
 if [[ -n "${FLASH_DEVICE}" ]]; then
   compose_cmd+=(--flash-device "${FLASH_DEVICE}")
 fi
 
-log "Invoking vendored Woodbox media adapter"
-WOODBOX_ADAPTER_ROOT="${VENDORED_ADAPTER_ROOT}" \
-OURBOX_MEDIA_COMPOSE_WORK_ROOT="${WORK_ROOT}" \
-  "${compose_cmd[@]}"
+log "Invoking vendored ${TARGET} media adapter"
+case "${TARGET}" in
+  woodbox)
+    WOODBOX_ADAPTER_ROOT="${VENDORED_ADAPTER_ROOT}" \
+    OURBOX_MEDIA_COMPOSE_WORK_ROOT="${WORK_ROOT}" \
+      "${compose_cmd[@]}"
+    ;;
+  matchbox)
+    MATCHBOX_ADAPTER_ROOT="${VENDORED_ADAPTER_ROOT}" \
+    OURBOX_MEDIA_COMPOSE_WORK_ROOT="${WORK_ROOT}" \
+      "${compose_cmd[@]}"
+    ;;
+esac
 
 if [[ "${COMPOSE_ONLY}" == "1" || -n "${OUTPUT_DIR}" ]]; then
   log "Mission media output directory: ${COMPOSE_OUTPUT_DIR}"
