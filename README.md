@@ -40,7 +40,8 @@ From a normal checkout of `sw-ourbox-installer`:
 git clone --recurse-submodules https://github.com/techofourown/sw-ourbox-installer.git
 cd sw-ourbox-installer
 ./tools/prepare-installer-media.sh
-# move media to Pi, boot, follow prompts, device powers off, remove media, boot NVMe
+# move the installer media to the target machine, boot it, follow the prompts,
+# let it power off, remove the installer media, then boot the installed system disk
 ```
 
 When run from a terminal, the host composer now mirrors the old installer UX:
