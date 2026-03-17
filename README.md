@@ -55,8 +55,10 @@ When run from a terminal, the host composer now mirrors the old installer UX:
 - `r` enters a custom OCI ref
 - `o` overrides the upstream repo/catalog
 - after OS selection, it prompts for one or more application catalogs
-- for official Woodbox catalogs, the default catalog ids come from upstream
-  `sw-ourbox-os` install-defaults data when that artifact is available
+- for official Woodbox catalogs, the default catalog ids must come from
+  upstream `sw-ourbox-os` install-defaults data
+- if that upstream defaults artifact is missing or malformed, the installer
+  fails fast instead of falling back to adapter-local default policy
 - official Woodbox catalog ids resolve through each catalog repo's published
   `catalog.tsv`, so the installer picks a contract-compatible pinned bundle
   instead of trusting floating bundle tags

@@ -1944,24 +1944,26 @@ PY
 }
 
 list_application_catalog_source_entries() {
-  python3 - <<'PY' "${APPLICATION_CATALOG_SOURCES_JSON}"
+  python3 - <<'PY' "${APPLICATION_CATALOG_SOURCES_JSON}" "${APPLICATION_CATALOG_DEFAULT_IDS}"
 import json
 import sys
 
 sources = json.loads(sys.argv[1])
+default_ids = {item.strip() for item in sys.argv[2].split(",") if item.strip()}
 if not isinstance(sources, list) or not sources:
     raise SystemExit("application catalog sources must be a non-empty list")
 
 for source in sources:
+    catalog_id = str(source.get("catalog_id", "")).strip()
     print("\x1f".join(
         [
-            str(source.get("catalog_id", "")).strip(),
+            catalog_id,
             str(source.get("catalog_name", "")).strip(),
             str(source.get("description", "")).strip(),
             str(source.get("artifact_ref", "")).strip(),
             str(source.get("catalog_ref", "")).strip(),
             str(source.get("release_channel", "")).strip(),
-            "1" if bool(source.get("default_selected", False)) else "0",
+            "1" if catalog_id in default_ids else "0",
         ]
     ))
 PY
@@ -1990,21 +1992,12 @@ render_application_catalog_source_entry() {
 }
 
 resolve_default_application_catalog_sources_json() {
-  if [[ -n "${APPLICATION_CATALOG_DEFAULT_IDS}" ]]; then
-    resolve_application_catalog_sources_from_ids "${APPLICATION_CATALOG_DEFAULT_IDS}"
-    return 0
+  if [[ -z "${APPLICATION_CATALOG_DEFAULT_IDS}" ]]; then
+    load_application_catalog_defaults_from_install_defaults
   fi
-
-  python3 - <<'PY' "${APPLICATION_CATALOG_SOURCES_JSON}"
-import json
-import sys
-
-sources = json.loads(sys.argv[1])
-defaults = [source for source in sources if bool(source.get("default_selected", False))]
-if not defaults:
-    defaults = [sources[0]]
-print(json.dumps(defaults))
-PY
+  [[ -n "${APPLICATION_CATALOG_DEFAULT_IDS}" ]] \
+    || die "official application catalog defaults are missing from upstream install defaults; rerun with --airgap-channel or --airgap-ref to override explicitly"
+  resolve_application_catalog_sources_from_ids "${APPLICATION_CATALOG_DEFAULT_IDS}"
 }
 
 resolve_application_catalog_sources_from_ids() {
@@ -2046,17 +2039,16 @@ load_application_catalog_defaults_from_install_defaults() {
   local profile_file=""
 
   APPLICATION_CATALOG_DEFAULT_IDS=""
-  [[ -n "${INSTALL_DEFAULTS_REF}" ]] || return 0
+  [[ -n "${INSTALL_DEFAULTS_REF}" ]] \
+    || die "official application catalog defaults require an upstream install-defaults ref"
 
   if ! try_cache_pull_oci_artifact "${INSTALL_DEFAULTS_REF}" "${CACHE_REUSE_ENABLED}" defaults_cache_dir; then
-    log "Install defaults ${INSTALL_DEFAULTS_REF} unavailable; falling back to adapter-declared application catalog defaults."
-    return 0
+    die "failed to pull upstream install defaults ${INSTALL_DEFAULTS_REF}; official application catalog defaults must come from upstream"
   fi
 
   defaults_tarball="$(find_pulled_file "${defaults_cache_dir}" "install-defaults.tar.gz")"
   if [[ -z "${defaults_tarball}" || ! -f "${defaults_tarball}" ]]; then
-    log "Install defaults ${INSTALL_DEFAULTS_REF} did not include install-defaults.tar.gz; falling back to adapter-declared application catalog defaults."
-    return 0
+    die "upstream install defaults ${INSTALL_DEFAULTS_REF} did not include install-defaults.tar.gz"
   fi
 
   rm -rf "${extract_dir}"
@@ -2064,8 +2056,7 @@ load_application_catalog_defaults_from_install_defaults() {
   tar -xzf "${defaults_tarball}" -C "${extract_dir}"
   profile_file="${extract_dir}/install-defaults/defaults/${TARGET}.env"
   if [[ ! -f "${profile_file}" ]]; then
-    log "Install defaults ${INSTALL_DEFAULTS_REF} did not include defaults/${TARGET}.env; falling back to adapter-declared application catalog defaults."
-    return 0
+    die "upstream install defaults ${INSTALL_DEFAULTS_REF} did not include defaults/${TARGET}.env"
   fi
 
   APPLICATION_CATALOG_DEFAULT_IDS="$(
@@ -2092,7 +2083,8 @@ PY
   )" || die "failed to parse APPLICATION_CATALOG_DEFAULT_IDS from ${INSTALL_DEFAULTS_REF}"
 
   [[ -n "${APPLICATION_CATALOG_DEFAULT_IDS}" ]] \
-    && log "Loaded default application catalog ids from install defaults: ${APPLICATION_CATALOG_DEFAULT_IDS}"
+    || die "upstream install defaults ${INSTALL_DEFAULTS_REF} did not declare APPLICATION_CATALOG_DEFAULT_IDS for ${TARGET}"
+  log "Loaded default application catalog ids from install defaults: ${APPLICATION_CATALOG_DEFAULT_IDS}"
 }
 
 resolve_application_catalog_ids_from_numbers() {
@@ -3487,7 +3479,6 @@ is_sha256_digest "${BAKED_AIRGAP_DIGEST}" || die "selected OS payload is missing
 
 APPLICATION_SOURCE_RESOLUTIONS_JSON="$(parse_application_source_resolutions_spec "${APP_SOURCE_RESOLUTIONS_SPEC}")"
 
-load_application_catalog_defaults_from_install_defaults
 determine_application_catalog_sources
 SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL="$(selected_installer_release_channel)"
 SELECTED_INSTALLER_SUBSTRATE_REF="${INSTALLER_REPO}:$(installer_channel_tag_for "${SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL}")"

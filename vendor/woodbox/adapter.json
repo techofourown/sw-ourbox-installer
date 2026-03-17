@@ -29,16 +29,14 @@
         "catalog_name": "Demo Application Catalog",
         "description": "Concrete demo catalog consuming demo and hello-world apps.",
         "catalog_ref": "ghcr.io/techofourown/sw-ourbox-catalog-demo:catalog-amd64",
-        "release_channel": "stable",
-        "default_selected": true
+        "release_channel": "stable"
       },
       {
         "catalog_id": "hello-world",
         "catalog_name": "Hello World Catalog",
         "description": "Hello-world-only catalog used to prove multi-catalog app sourcing.",
         "catalog_ref": "ghcr.io/techofourown/sw-ourbox-catalog-hello-world:catalog-amd64",
-        "release_channel": "stable",
-        "default_selected": true
+        "release_channel": "stable"
       }
     ],
     "installer_repo": "ghcr.io/techofourown/ourbox-woodbox-installer",

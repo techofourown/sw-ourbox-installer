@@ -62,16 +62,14 @@ APPLICATION_CATALOG_SOURCES_JSON='[
     "catalog_name": "Demo Application Catalog",
     "description": "default demo catalog",
     "catalog_ref": "ghcr.io/example/sw-ourbox-catalog-demo:catalog-amd64",
-    "release_channel": "stable",
-    "default_selected": false
+    "release_channel": "stable"
   },
   {
     "catalog_id": "hello-world",
     "catalog_name": "Hello World Catalog",
     "description": "default hello-world catalog",
     "catalog_ref": "ghcr.io/example/sw-ourbox-catalog-hello-world:catalog-amd64",
-    "release_channel": "stable",
-    "default_selected": false
+    "release_channel": "stable"
   }
 ]'
 
@@ -86,6 +84,21 @@ determine_application_catalog_sources
 }
 [[ "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}" == *'"catalog_id": "hello-world"'* ]] || {
   echo "expected upstream default ids to include hello-world" >&2
+  exit 1
+}
+
+APPLICATION_CATALOG_DEFAULT_IDS=""
+INSTALL_DEFAULTS_REF="ghcr.io/example/sw-ourbox-os/install-defaults-missing:stable"
+try_cache_pull_oci_artifact() {
+  return 1
+}
+if (resolve_default_application_catalog_sources_json) >"${TMP_ROOT}/missing-defaults.out" 2>"${TMP_ROOT}/missing-defaults.err"; then
+  echo "expected missing upstream install defaults to fail fast" >&2
+  exit 1
+fi
+grep -F "failed to pull upstream install defaults" "${TMP_ROOT}/missing-defaults.err" >/dev/null || {
+  echo "expected failure output to mention missing upstream install defaults" >&2
+  cat "${TMP_ROOT}/missing-defaults.err" >&2
   exit 1
 }
 
@@ -113,6 +126,7 @@ cache_pull_oci_artifact() {
 
 PLATFORM_CONTRACT_DIGEST="sha256:636af2d46d04b086366e97184d4e257d6c6e7dc75f070758d032cdd3cd4ff976"
 EXPECTED_AIRGAP_ARCH="amd64"
+INSTALL_DEFAULTS_REF="ghcr.io/example/sw-ourbox-os/install-defaults:stable"
 resolved_catalog_ref="$(resolve_application_catalog_bundle_ref_from_catalog "${CATALOG_INDEX_REF}" stable)"
 [[ "${resolved_catalog_ref}" == "ghcr.io/example/sw-ourbox-catalog-demo@sha256:2222222222222222222222222222222222222222222222222222222222222222" ]] || {
   echo "expected catalog index resolver to choose the newest matching stable row" >&2

@@ -28,22 +28,21 @@ interactive_selection_enabled() {
   return 0
 }
 
+APPLICATION_CATALOG_DEFAULT_IDS="demo-apps"
 APPLICATION_CATALOG_SOURCES_JSON='[
   {
     "catalog_id": "demo-apps",
     "catalog_name": "Demo Application Catalog",
     "description": "default",
     "catalog_ref": "ghcr.io/example/sw-ourbox-catalog-demo:catalog-amd64",
-    "release_channel": "stable",
-    "default_selected": true
+    "release_channel": "stable"
   },
   {
     "catalog_id": "hello-world",
     "catalog_name": "Hello World Catalog",
     "description": "secondary",
     "catalog_ref": "ghcr.io/example/sw-ourbox-catalog-hello-world:catalog-amd64",
-    "release_channel": "stable",
-    "default_selected": false
+    "release_channel": "stable"
   }
 ]'
 
