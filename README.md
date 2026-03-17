@@ -49,6 +49,8 @@ When run from a terminal, the host composer now mirrors the old installer UX:
 
 - it prompts for the target type first
 - it prompts for the OS artifact first
+- the default OS path must resolve through the upstream OS catalog; if that
+  catalog is unavailable or malformed, the run fails fast
 - `ENTER` accepts the default lane choice
 - `c` chooses a different lane
 - `l` lists catalog rows newest-first with `n`/`p` page navigation
@@ -62,6 +64,9 @@ When run from a terminal, the host composer now mirrors the old installer UX:
 - official Woodbox catalog ids resolve through each catalog repo's published
   `catalog.tsv`, so the installer picks a contract-compatible pinned bundle
   instead of trusting floating bundle tags
+- if an upstream catalog cannot be fetched or does not expose a compatible
+  row, the official default path fails fast instead of degrading to mutable
+  non-catalog tags
 - if the selected catalogs provide the same app uid from multiple catalogs, it
   only stops when the duplicated app definitions differ; identical duplicates
   are deduped automatically

@@ -205,6 +205,22 @@ determine_airgap_ref "${CONTRACT_DIGEST}" <<< $'\n'
 [[ "${SELECTED_AIRGAP_RELEASE_CHANNEL}" == "stable" ]] || die "expected default airgap channel release channel to remain stable"
 AIRGAP_CHANNEL=""
 
+try_cache_pull_oci_artifact() {
+  return 1
+}
+
+if (resolve_os_channel_ref "stable") >"${TMP_ROOT}/missing-os.out" 2>"${TMP_ROOT}/missing-os.err"; then
+  die "expected missing OS catalog to fail fast"
+fi
+grep -F "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} is unavailable" "${TMP_ROOT}/missing-os.err" >/dev/null \
+  || die "expected missing OS catalog failure to mention the unavailable catalog"
+
+if (resolve_airgap_channel_ref "${CONTRACT_DIGEST}" "stable") >"${TMP_ROOT}/missing-airgap.out" 2>"${TMP_ROOT}/missing-airgap.err"; then
+  die "expected missing airgap catalog to fail fast"
+fi
+grep -F "Application catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} is unavailable" "${TMP_ROOT}/missing-airgap.err" >/dev/null \
+  || die "expected missing airgap catalog failure to mention the unavailable catalog"
+
 AIRGAP_EXTRACT_DIR="${TMP_ROOT}/airgap-extract"
 mkdir -p "${AIRGAP_EXTRACT_DIR}/platform"
 cat > "${AIRGAP_EXTRACT_DIR}/platform/catalog.json" <<'EOF'

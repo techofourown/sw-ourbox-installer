@@ -1442,7 +1442,6 @@ resolve_os_channel_ref() {
   local catalog_cache_dir=""
   local catalog_tsv=""
   local catalog_ref=""
-  local channel_tag_ref="${OS_REPO}:$(os_channel_tag_for "${channel}")"
 
   if try_cache_pull_oci_artifact "${OS_REPO}:${OS_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
     catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
@@ -1455,14 +1454,10 @@ resolve_os_channel_ref() {
         return 0
       fi
     fi
-    log "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} had no valid pinned row for channel ${channel}; falling back to channel tag"
+    die "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} had no valid pinned row for channel ${channel}"
   else
-    log "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} unavailable; falling back to channel tag"
+    die "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} is unavailable"
   fi
-
-  SELECTED_OS_SELECTION_SOURCE="channel-tag"
-  SELECTED_OS_RELEASE_CHANNEL="${channel}"
-  SELECTED_OS_REF="${channel_tag_ref}"
 }
 
 show_os_default_choice() {
@@ -1660,7 +1655,6 @@ resolve_airgap_channel_ref() {
   local catalog_cache_dir=""
   local catalog_tsv=""
   local catalog_ref=""
-  local channel_tag_ref="${AIRGAP_REPO}:$(airgap_channel_tag_for "${channel}")"
 
   if try_cache_pull_oci_artifact "${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
     catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
@@ -1674,15 +1668,10 @@ resolve_airgap_channel_ref() {
         return 0
       fi
     fi
-    log "Application catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} had no valid pinned row for lane ${channel} and contract ${required_contract_digest}; falling back to lane tag"
+    die "Application catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} had no valid pinned row for lane ${channel} and contract ${required_contract_digest}"
   else
-    log "Application catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} unavailable; falling back to lane tag"
+    die "Application catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} is unavailable"
   fi
-
-  SELECTED_AIRGAP_SELECTION_MODE="host-selected"
-  SELECTED_AIRGAP_SELECTION_SOURCE="channel-tag"
-  SELECTED_AIRGAP_RELEASE_CHANNEL="${channel}"
-  SELECTED_AIRGAP_REF="${channel_tag_ref}"
 }
 
 resolve_default_airgap_ref() {
