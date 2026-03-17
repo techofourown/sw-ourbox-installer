@@ -1508,7 +1508,7 @@ choose_os_channel_interactive() {
         return 1
       }
       SELECTED_OS_REF="${OS_REPO}:${custom_tag}"
-      SELECTED_OS_SELECTION_SOURCE="channel-tag"
+      SELECTED_OS_SELECTION_SOURCE="operator-override"
       SELECTED_OS_RELEASE_CHANNEL=""
       return 0
       ;;
