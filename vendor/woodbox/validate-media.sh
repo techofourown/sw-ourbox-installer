@@ -541,7 +541,7 @@ contract_version="${payload_fields[2]}"
 if ! [[ "${contract_version}" =~ ^v([0-9]+)\.([0-9]+)\. ]]; then
   die "payload meta OURBOX_PLATFORM_CONTRACT_VERSION is not a valid version string: ${contract_version}"
 fi
-if (( BASH_REMATCH[1] == 0 && BASH_REMATCH[2] < 20 )); then
+if (( 10#${BASH_REMATCH[1]} == 0 && 10#${BASH_REMATCH[2]} < 20 )); then
   die "OS payload platform contract ${contract_version} predates the runtime app-surface capability (v0.20.0+ required); update the approved platform-contract snapshot in sw-ourbox-os"
 fi
 
