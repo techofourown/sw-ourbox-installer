@@ -39,4 +39,44 @@ mapfile -t adapter_fields <<<"${adapter_dump}"
 grep -q "published Woodbox installer substrate artifact" <<<"${adapter_fields[3]}" \
   || die "vendored adapter notes should describe published substrate composition"
 
-printf '[%s] published substrate selection smoke passed\n' "$(date -Is)"
+# shellcheck disable=SC2034
+OURBOX_PREPARE_INSTALLER_LIBRARY_ONLY=1
+# shellcheck disable=SC1091
+source "${ROOT}/tools/prepare-installer-media.sh"
+unset OURBOX_PREPARE_INSTALLER_LIBRARY_ONLY
+
+# shellcheck disable=SC2034
+TARGET="woodbox"
+# shellcheck disable=SC2034
+OS_CHANNEL="stable"
+load_target_adapter_metadata
+[[ "${AIRGAP_SELECTION_MODEL}" == "application-catalogs" ]] \
+  || die "woodbox should resolve to the application-catalogs selection model"
+[[ "${TARGET_SUPPORTS_APPLICATION_CATALOGS}" == "1" ]] \
+  || die "woodbox should advertise application catalog support"
+[[ "${TARGET_SUPPORTS_INSTALLED_TARGET_SSH}" == "1" ]] \
+  || die "woodbox should advertise installed-target SSH support"
+[[ "${AIRGAP_REPO}" == "" ]] || die "woodbox should not set an airgap bundle repo"
+[[ "${AIRGAP_CATALOG_TAG}" == "" ]] || die "woodbox should not set an airgap bundle catalog tag"
+grep -q '"catalog_id": "demo-apps"' <<<"${APPLICATION_CATALOG_SOURCES_JSON}" \
+  || die "woodbox should expose vendored application catalog sources"
+
+# shellcheck disable=SC2034
+TARGET="matchbox"
+# shellcheck disable=SC2034
+OS_CHANNEL="stable"
+load_target_adapter_metadata
+[[ "${AIRGAP_SELECTION_MODEL}" == "published-airgap-bundle" ]] \
+  || die "matchbox should resolve to the published-airgap-bundle selection model"
+[[ "${TARGET_SUPPORTS_APPLICATION_CATALOGS}" == "0" ]] \
+  || die "matchbox should not advertise application catalog support"
+[[ "${TARGET_SUPPORTS_INSTALLED_TARGET_SSH}" == "0" ]] \
+  || die "matchbox should not advertise installed-target SSH support"
+[[ "${APPLICATION_CATALOG_SOURCES_JSON}" == "[]" ]] \
+  || die "matchbox should not advertise application catalog sources"
+[[ "${AIRGAP_REPO}" == "ghcr.io/techofourown/sw-ourbox-os/airgap-platform" ]] \
+  || die "matchbox airgap bundle repo mismatch"
+[[ "${AIRGAP_CATALOG_TAG}" == "catalog-arm64" ]] \
+  || die "matchbox airgap bundle catalog tag mismatch"
+
+printf '[%s] adapter metadata discovery smoke passed\n' "$(date -Is)"
