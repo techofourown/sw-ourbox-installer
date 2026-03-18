@@ -630,12 +630,16 @@ print("\n".join([
     airgap_beta,
     airgap_nightly,
     airgap_exp_labs,
+    "__OURBOX_ADAPTER_FIELDS_END__",
 ]))
 PY
   )"
 
   mapfile -t adapter_fields <<<"${adapter_dump}"
-  [[ "${#adapter_fields[@]}" -eq 26 ]] || die "failed to load vendored adapter metadata for target '${TARGET}'"
+  [[ "${#adapter_fields[@]}" -eq 27 ]] || die "failed to load vendored adapter metadata for target '${TARGET}'"
+  [[ "${adapter_fields[26]}" == "__OURBOX_ADAPTER_FIELDS_END__" ]] \
+    || die "failed to load vendored adapter metadata for target '${TARGET}'"
+  unset 'adapter_fields[26]'
 
   OS_REPO="${adapter_fields[0]}"
   OS_CATALOG_TAG="${adapter_fields[1]}"
