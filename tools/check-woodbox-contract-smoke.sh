@@ -188,6 +188,16 @@ bash "${ROOT}/vendor/woodbox/validate-media.sh" \
   --os-payload "${OS_DIR}/os-payload.tar.gz" \
   --os-meta-env "${OS_DIR}/os.meta.env"
 
+# Also verify that "dev" is accepted (edge-channel builds before semantic-release
+# tags the commit always emit OURBOX_PLATFORM_CONTRACT_VERSION=dev)
+DEV_META_ENV="${TMP}/os.meta.dev.env"
+sed 's/^OURBOX_PLATFORM_CONTRACT_VERSION=.*/OURBOX_PLATFORM_CONTRACT_VERSION=dev/' \
+  "${OS_DIR}/os.meta.env" > "${DEV_META_ENV}"
+bash "${ROOT}/vendor/woodbox/validate-media.sh" \
+  --mission-dir "${MISSION_DIR}" \
+  --os-payload "${OS_DIR}/os-payload.tar.gz" \
+  --os-meta-env "${DEV_META_ENV}"
+
 printf 'set timeout=1\nmenuentry \"fixture\" {\n linux /casper/vmlinuz autoinstall ds=nocloud\\;s=file:///cdrom/nocloud/ ---\n}\n' \
   > "${SUBSTRATE_TREE}/boot/grub/grub.cfg"
 dd if=/dev/zero of="${SUBSTRATE_TREE}/boot/grub/i386-pc/eltorito.img" bs=1M count=1 status=none
