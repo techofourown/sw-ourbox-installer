@@ -75,6 +75,20 @@ determine_application_catalog_sources <<< $'c\n1,2\n\n\n'
 }
 
 AIRGAP_REF=""
+AIRGAP_CHANNEL=""
+SELECTED_APPLICATION_CATALOG_SOURCES_JSON=""
+SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY=""
+determine_application_catalog_sources <<< $'c\n1\nghcr.io/example/custom-catalog:catalog-amd64\n\n'
+[[ "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}" == *'"catalog_id": "demo-apps"'* ]] || {
+  echo "expected mixed interactive source selection to include demo-apps" >&2
+  exit 1
+}
+[[ "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}" == *'"artifact_ref": "ghcr.io/example/custom-catalog:catalog-amd64"'* ]] || {
+  echo "expected mixed interactive source selection to retain the custom catalog ref" >&2
+  exit 1
+}
+
+AIRGAP_REF=""
 AIRGAP_CHANNEL="hello-world,demo-apps"
 SELECTED_APPLICATION_CATALOG_SOURCES_JSON=""
 SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY=""

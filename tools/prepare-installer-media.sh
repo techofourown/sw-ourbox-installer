@@ -2140,7 +2140,7 @@ for ref in refs:
         {
             "catalog_id": "",
             "catalog_name": "",
-            "description": "Operator-provided application catalog bundle",
+            "description": "Operator-provided application catalog ref",
             "artifact_ref": ref,
             "catalog_ref": "",
             "release_channel": "",
@@ -2166,15 +2166,15 @@ additional = json.loads(sys.argv[2]) if sys.argv[2] and sys.argv[2] != "[]" else
 seen_refs = set()
 merged = []
 for source in base:
-    ref = str(source.get("artifact_ref", "")).strip()
+    ref = str(source.get("artifact_ref", "")).strip() or str(source.get("catalog_ref", "")).strip()
     if ref:
         seen_refs.add(ref)
     merged.append(source)
 
 for source in additional:
-    ref = str(source.get("artifact_ref", "")).strip()
+    ref = str(source.get("artifact_ref", "")).strip() or str(source.get("catalog_ref", "")).strip()
     if ref and ref in seen_refs:
-        print(f"warning: skipping duplicate artifact_ref: {ref}", file=sys.stderr)
+        print(f"warning: skipping duplicate catalog ref: {ref}", file=sys.stderr)
         continue
     if ref:
         seen_refs.add(ref)
@@ -2192,7 +2192,7 @@ show_application_catalog_source_panel() {
   echo "Default catalogs: ${default_display}"
   echo "Options:"
   echo "  [ENTER] Use the default application catalog set"
-  echo "  c       Customize catalog selection (official + custom refs)"
+  echo "  c       Customize catalog selection (official + custom catalog refs)"
   echo "  q       Quit"
   echo
 }
@@ -2255,8 +2255,8 @@ interactive_select_application_catalog_sources() {
 
         # Step 2/2: custom catalog refs
         echo
-        echo "Step 2/2: Add custom application catalog bundle refs"
-        read -r -p "Enter full OCI refs separated by commas (or ENTER to skip): " choice
+        echo "Step 2/2: Add custom application catalog refs"
+        read -r -p "Enter catalog OCI refs separated by commas (or ENTER to skip): " choice
         if [[ -n "${choice}" ]]; then
           custom_json="$(parse_custom_application_catalog_refs_json "${choice}")" || custom_json="[]"
         fi
@@ -3111,6 +3111,18 @@ prepare_merged_application_catalog() {
     log_resolved_artifact_ref "application catalog" "${requested_artifact_ref:-${requested_catalog_ref}}" "${pinned_ref}"
 
     bundle_tarball="$(find_pulled_file "${catalog_cache_dir}" "application-catalog-bundle.tar.gz")"
+    if [[ ! -f "${bundle_tarball}" ]]; then
+      local index_tsv=""
+      index_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
+      if [[ -f "${index_tsv}" ]]; then
+        log "Ref ${requested_pull_ref} is a catalog index; resolving bundle from it"
+        requested_pull_ref="$(resolve_application_catalog_bundle_ref_from_catalog "${pinned_ref}" "${requested_release_channel:-stable}")"
+        cache_pull_oci_artifact "${requested_pull_ref}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir
+        pinned_digest="${OURBOX_CACHE_LAST_DIGEST}"
+        pinned_ref="${OURBOX_CACHE_LAST_PINNED_REF}"
+        bundle_tarball="$(find_pulled_file "${catalog_cache_dir}" "application-catalog-bundle.tar.gz")"
+      fi
+    fi
     [[ -f "${bundle_tarball}" ]] || die "cached application catalog bundle missing application-catalog-bundle.tar.gz: ${catalog_cache_dir}"
     bundle_sha="${bundle_tarball}.sha256"
     if [[ -f "${bundle_sha}" ]]; then
