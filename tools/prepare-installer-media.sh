@@ -2153,6 +2153,37 @@ print(json.dumps(selected))
 PY
 }
 
+merge_application_catalog_sources_json() {
+  local base_json="$1"
+  local additional_json="$2"
+  python3 - <<'PY' "${base_json}" "${additional_json}"
+import json
+import sys
+
+base = json.loads(sys.argv[1]) if sys.argv[1] and sys.argv[1] != "[]" else []
+additional = json.loads(sys.argv[2]) if sys.argv[2] and sys.argv[2] != "[]" else []
+
+seen_refs = set()
+merged = []
+for source in base:
+    ref = str(source.get("artifact_ref", "")).strip()
+    if ref:
+        seen_refs.add(ref)
+    merged.append(source)
+
+for source in additional:
+    ref = str(source.get("artifact_ref", "")).strip()
+    if ref and ref in seen_refs:
+        print(f"warning: skipping duplicate artifact_ref: {ref}", file=sys.stderr)
+        continue
+    if ref:
+        seen_refs.add(ref)
+    merged.append(source)
+
+print(json.dumps(merged))
+PY
+}
+
 show_application_catalog_source_panel() {
   local default_display="$1"
 
@@ -2161,39 +2192,41 @@ show_application_catalog_source_panel() {
   echo "Default catalogs: ${default_display}"
   echo "Options:"
   echo "  [ENTER] Use the default application catalog set"
-  echo "  c       Choose official application catalogs by number"
-  echo "  r       Enter custom application catalog bundle refs (comma-separated)"
+  echo "  c       Customize catalog selection (official + custom refs)"
   echo "  q       Quit"
   echo
 }
 
-choose_application_catalog_sources_interactive() {
+pick_official_catalog_sources_json() {
   local raw_selection=""
   local -a entries=()
 
   mapfile -t entries < <(list_application_catalog_source_entries)
   (( ${#entries[@]} > 0 )) || die "no application catalog sources declared by the adapter"
 
-  echo
-  echo "Official application catalogs:"
+  echo >&2
+  echo "Official application catalogs:" >&2
   local i=1
   local entry=""
   for entry in "${entries[@]}"; do
-    render_application_catalog_source_entry "${i}" "${entry}"
+    render_application_catalog_source_entry "${i}" "${entry}" >&2
     i=$((i + 1))
   done
-  echo
-  read -r -p "Enter catalog numbers separated by commas (or ENTER to cancel): " raw_selection
-  [[ -n "${raw_selection}" ]] || return 1
+  echo >&2
+  read -r -p "Enter catalog numbers separated by commas (or ENTER to skip): " raw_selection
+  [[ -n "${raw_selection}" ]] || { echo "[]"; return 0; }
 
-  SELECTED_APPLICATION_CATALOG_SOURCES_JSON="$(resolve_application_catalog_sources_from_numbers "${raw_selection}")" || return 1
-  SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY="$(application_catalog_source_display_from_json "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}")"
+  resolve_application_catalog_sources_from_numbers "${raw_selection}" || { echo "[]"; return 0; }
 }
 
 interactive_select_application_catalog_sources() {
   local choice=""
   local default_sources_json=""
   local default_display=""
+  local official_json="[]"
+  local custom_json="[]"
+  local combined_json="[]"
+  local combined_display=""
 
   default_sources_json="$(resolve_default_application_catalog_sources_json)"
   default_display="$(application_catalog_source_display_from_json "${default_sources_json}")"
@@ -2206,20 +2239,52 @@ interactive_select_application_catalog_sources() {
       "")
         SELECTED_APPLICATION_CATALOG_SOURCES_JSON="${default_sources_json}"
         SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY="${default_display}"
+        return 0
         ;;
       c|C)
-        choose_application_catalog_sources_interactive || true
-        ;;
-      r|R)
-        read -r -p "Enter full OCI refs separated by commas: " choice
-        [[ -n "${choice}" ]] || {
-          log "Application catalog refs cannot be empty."
-          continue
-        }
-        SELECTED_APPLICATION_CATALOG_SOURCES_JSON="$(parse_custom_application_catalog_refs_json "${choice}")" || true
-        if [[ -n "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}" && "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}" != "[]" ]]; then
-          SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY="$(application_catalog_source_display_from_json "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}")"
+        # Step 1/2: official catalogs
+        echo
+        echo "Step 1/2: Select official application catalogs"
+        official_json="$(pick_official_catalog_sources_json)" || official_json="[]"
+
+        if [[ "${official_json}" != "[]" ]]; then
+          log "Official catalogs selected: $(application_catalog_source_display_from_json "${official_json}")"
+        else
+          log "No official catalogs selected."
         fi
+
+        # Step 2/2: custom catalog refs
+        echo
+        echo "Step 2/2: Add custom application catalog bundle refs"
+        read -r -p "Enter full OCI refs separated by commas (or ENTER to skip): " choice
+        if [[ -n "${choice}" ]]; then
+          custom_json="$(parse_custom_application_catalog_refs_json "${choice}")" || custom_json="[]"
+        fi
+
+        # Merge official + custom
+        combined_json="$(merge_application_catalog_sources_json "${official_json}" "${custom_json}")"
+
+        if [[ -z "${combined_json}" || "${combined_json}" == "[]" ]]; then
+          log "No catalogs selected. Restarting."
+          continue
+        fi
+
+        combined_display="$(application_catalog_source_display_from_json "${combined_json}")"
+        echo
+        echo "Combined application catalog selection: ${combined_display}"
+        read -r -p "Confirm this selection? [Y/n]: " choice
+        case "${choice}" in
+          ""|y|Y)
+            SELECTED_APPLICATION_CATALOG_SOURCES_JSON="${combined_json}"
+            SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY="${combined_display}"
+            ;;
+          *)
+            log "Selection cancelled. Restarting."
+            official_json="[]"
+            custom_json="[]"
+            continue
+            ;;
+        esac
         ;;
       q|Q)
         die "Mission compose aborted by user"
