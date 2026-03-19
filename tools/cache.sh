@@ -155,6 +155,7 @@ try_cache_pull_oci_artifact() {
 
   cache_dir="$(cache_dir_for_digest "${OURBOX_CACHE_LAST_DIGEST}")"
   if [[ "${reuse_cache}" == "1" && -f "${cache_dir}/.pull-complete" ]]; then
+    log "Cache hit: ${OURBOX_CACHE_LAST_PINNED_REF}"
     printf -v "${outvar}" '%s' "${cache_dir}"
     return 0
   fi
