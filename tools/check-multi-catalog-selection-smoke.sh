@@ -64,7 +64,7 @@ AIRGAP_REF=""
 AIRGAP_CHANNEL=""
 SELECTED_APPLICATION_CATALOG_SOURCES_JSON=""
 SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY=""
-determine_application_catalog_sources <<< $'c\n1,2\n'
+determine_application_catalog_sources <<< $'c\n1,2\n\n\n'
 [[ "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}" == *'"catalog_id": "demo-apps"'* ]] || {
   echo "expected interactive source selection to include demo-apps" >&2
   exit 1
