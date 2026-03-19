@@ -133,4 +133,138 @@ resolved_catalog_ref="$(resolve_application_catalog_bundle_ref_from_catalog "${C
   exit 1
 }
 
+CUSTOM_INDEX_REF="ghcr.io/example/custom-catalog:catalog-amd64"
+CUSTOM_INDEX_PINNED_REF="ghcr.io/example/custom-catalog@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+CUSTOM_BUNDLE_PINNED_REF="ghcr.io/example/custom-catalog@sha256:5555555555555555555555555555555555555555555555555555555555555555"
+CUSTOM_INDEX_CACHE_DIR="${TMP_ROOT}/custom-index-cache"
+CUSTOM_BUNDLE_CACHE_DIR="${TMP_ROOT}/custom-bundle-cache"
+CUSTOM_BUNDLE_BUILD_DIR="${TMP_ROOT}/custom-bundle-build"
+PULL_LOG="${TMP_ROOT}/custom-catalog-pulls.log"
+
+mkdir -p "${CUSTOM_INDEX_CACHE_DIR}" "${CUSTOM_BUNDLE_CACHE_DIR}" "${CUSTOM_BUNDLE_BUILD_DIR}/bundle"
+: > "${PULL_LOG}"
+
+cat > "${CUSTOM_INDEX_CACHE_DIR}/catalog.tsv" <<EOF_CUSTOM_INDEX
+channel	tag	created	version	revision	arch	platform_contract_digest	platform_profile	platform_images_lock_sha256	artifact_digest	pinned_ref
+stable	main	2026-03-16T13:00:00Z	v0.3.0	444444444444	amd64	${PLATFORM_CONTRACT_DIGEST}	custom	sha256:6666666666666666666666666666666666666666666666666666666666666666	sha256:5555555555555555555555555555555555555555555555555555555555555555	${CUSTOM_BUNDLE_PINNED_REF}
+EOF_CUSTOM_INDEX
+
+cat > "${CUSTOM_BUNDLE_BUILD_DIR}/bundle/catalog.json" <<'EOF_CUSTOM_CATALOG'
+{
+  "schema": 1,
+  "kind": "ourbox-application-catalog",
+  "catalog_id": "custom-catalog",
+  "catalog_name": "Custom Catalog",
+  "catalog_description": "custom",
+  "default_app_ids": [
+    "custom-app"
+  ],
+  "apps": [
+    {
+      "id": "custom-app",
+      "app_uid": "example/custom-app",
+      "display_name": "Custom App",
+      "description": "custom app",
+      "service_name": "custom-app",
+      "service_port": 8080,
+      "host_template": "custom.{box_host}",
+      "path": "/",
+      "expected_status": 200,
+      "body_marker": "Custom App",
+      "route_description": "custom-app-root",
+      "default_backend": false,
+      "image_names": [
+        "custom-app"
+      ]
+    }
+  ]
+}
+EOF_CUSTOM_CATALOG
+
+cat > "${CUSTOM_BUNDLE_BUILD_DIR}/bundle/images.lock.json" <<'EOF_CUSTOM_IMAGES'
+{
+  "schema": 1,
+  "images": [
+    {
+      "name": "custom-app",
+      "ref": "ghcr.io/example/custom-app@sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    }
+  ]
+}
+EOF_CUSTOM_IMAGES
+
+cat > "${CUSTOM_BUNDLE_BUILD_DIR}/bundle/manifest.env" <<EOF_CUSTOM_MANIFEST
+OURBOX_PLATFORM_CONTRACT_DIGEST=${PLATFORM_CONTRACT_DIGEST}
+EOF_CUSTOM_MANIFEST
+
+cat > "${CUSTOM_BUNDLE_BUILD_DIR}/bundle/profile.env" <<'EOF_CUSTOM_PROFILE'
+OURBOX_PROFILE=custom
+EOF_CUSTOM_PROFILE
+
+tar -czf "${CUSTOM_BUNDLE_CACHE_DIR}/application-catalog-bundle.tar.gz" -C "${CUSTOM_BUNDLE_BUILD_DIR}/bundle" .
+sha256sum "${CUSTOM_BUNDLE_CACHE_DIR}/application-catalog-bundle.tar.gz" > "${CUSTOM_BUNDLE_CACHE_DIR}/application-catalog-bundle.tar.gz.sha256"
+
+cache_pull_oci_artifact() {
+  local ref="$1"
+  local _reuse="$2"
+  local outvar="$3"
+
+  printf '%s\n' "${ref}" >> "${PULL_LOG}"
+  case "${ref}" in
+    "${CUSTOM_INDEX_REF}"|"${CUSTOM_INDEX_PINNED_REF}")
+      OURBOX_CACHE_LAST_PINNED_REF="${CUSTOM_INDEX_PINNED_REF}"
+      OURBOX_CACHE_LAST_DIGEST="${CUSTOM_INDEX_PINNED_REF##*@}"
+      printf -v "${outvar}" '%s' "${CUSTOM_INDEX_CACHE_DIR}"
+      ;;
+    "${CUSTOM_BUNDLE_PINNED_REF}")
+      OURBOX_CACHE_LAST_PINNED_REF="${CUSTOM_BUNDLE_PINNED_REF}"
+      OURBOX_CACHE_LAST_DIGEST="${CUSTOM_BUNDLE_PINNED_REF##*@}"
+      printf -v "${outvar}" '%s' "${CUSTOM_BUNDLE_CACHE_DIR}"
+      ;;
+    *)
+      echo "unexpected cache pull ref: ${ref}" >&2
+      return 1
+      ;;
+  esac
+}
+
+SELECTED_APPLICATION_CATALOG_SOURCES_JSON="$(parse_custom_application_catalog_refs_json "${CUSTOM_INDEX_REF}")"
+APPLICATION_SOURCE_RESOLUTIONS_JSON="{}"
+prepare_merged_application_catalog "catalog-defaults" "[]"
+
+python3 - <<'PY' "${MERGED_APPLICATION_SUMMARY_FILE}" "${CUSTOM_BUNDLE_PINNED_REF}"
+import json
+import sys
+
+summary = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+source_catalogs = summary.get("source_catalogs", [])
+if len(source_catalogs) != 1:
+    raise SystemExit("expected one merged source catalog after custom index resolution")
+source = source_catalogs[0]
+if source.get("catalog_id") != "custom-catalog":
+    raise SystemExit(f"unexpected merged catalog id: {source.get('catalog_id')!r}")
+if source.get("artifact_ref") != sys.argv[2]:
+    raise SystemExit(f"expected merged source artifact_ref to be {sys.argv[2]!r}, got {source.get('artifact_ref')!r}")
+if summary.get("selected_app_ids") != ["example/custom-app"]:
+    raise SystemExit(f"unexpected selected app ids: {summary.get('selected_app_ids')!r}")
+PY
+
+mapfile -t custom_pull_refs < "${PULL_LOG}"
+[[ "${#custom_pull_refs[@]}" -eq 3 ]] || {
+  echo "expected custom catalog resolution to perform three pulls" >&2
+  exit 1
+}
+[[ "${custom_pull_refs[0]}" == "${CUSTOM_INDEX_REF}" ]] || {
+  echo "expected the first pull to use the operator-provided custom catalog ref" >&2
+  exit 1
+}
+[[ "${custom_pull_refs[1]}" == "${CUSTOM_INDEX_PINNED_REF}" ]] || {
+  echo "expected the resolver to inspect the pinned custom catalog index" >&2
+  exit 1
+}
+[[ "${custom_pull_refs[2]}" == "${CUSTOM_BUNDLE_PINNED_REF}" ]] || {
+  echo "expected the final pull to use the resolved custom catalog bundle ref" >&2
+  exit 1
+}
+
 printf '[%s] upstream catalog defaults smoke passed\n' "$(date -Is)"
