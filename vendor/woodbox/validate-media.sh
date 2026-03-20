@@ -290,10 +290,24 @@ def validate_airgap_bundle(payload_path: pathlib.Path, manifest_path: pathlib.Pa
     except tarfile.TarError as exc:
         raise SystemExit(f"mission selected_airgap.payload_relpath must be a valid gzip tar archive: {exc}") from exc
 
-if manifest.get("schema") != 1:
-    raise SystemExit("mission manifest schema must be 1")
+schema = manifest.get("schema")
+if schema not in {1, 2}:
+    raise SystemExit("mission manifest schema must be 1 or 2")
 if manifest.get("kind") != "ourbox-mission":
     raise SystemExit("mission manifest kind must be 'ourbox-mission'")
+if schema == 2:
+    resolved = manifest.get("resolved")
+    if not isinstance(resolved, dict) or not resolved:
+        raise SystemExit("mission schema=2 requires a resolved object")
+    selected_os = resolved.get("os") or {}
+    selected_airgap = resolved.get("airgap") or {}
+    installed_target_ssh = resolved.get("installed_target_ssh")
+    selected_applications = resolved.get("applications")
+else:
+    selected_os = manifest.get("selected_os", {})
+    selected_airgap = manifest.get("selected_airgap")
+    installed_target_ssh = manifest.get("installed_target_ssh")
+    selected_applications = manifest.get("selected_applications")
 target = manifest.get("target", {})
 if target.get("id") != "woodbox":
     raise SystemExit("mission target.id must be 'woodbox'")
@@ -306,7 +320,6 @@ platform_contract = manifest.get("platform_contract", {})
 platform_digest = str(platform_contract.get("digest", ""))
 if not platform_digest.startswith("sha256:") or len(platform_digest) != 71:
     raise SystemExit("mission platform_contract.digest must be a sha256 digest")
-selected_os = manifest.get("selected_os", {})
 if selected_os.get("artifact_type") != expected_type:
     raise SystemExit(f"mission selected_os.artifact_type must be {expected_type}")
 os_selection_source = str(selected_os.get("selection_source", ""))
@@ -337,7 +350,6 @@ if os_payload_path != expected_payload:
     raise SystemExit("mission selected_os.payload.relpath must match the explicit --os-payload input")
 if os_meta_path != expected_meta:
     raise SystemExit("mission selected_os.metadata_relpath must match the explicit --os-meta-env input")
-selected_airgap = manifest.get("selected_airgap")
 if not isinstance(selected_airgap, dict) or not selected_airgap:
     raise SystemExit("mission selected_airgap must be present")
 airgap_selection_mode = str(selected_airgap.get("selection_mode", ""))
@@ -373,7 +385,6 @@ airgap_manifest_path = require_staged_file("mission selected_airgap.manifest_rel
 validate_sha256_sidecar("mission selected_airgap.payload.relpath", payload_relpath, airgap_payload_path)
 validate_airgap_bundle(airgap_payload_path, airgap_manifest_path, airgap_contract)
 
-installed_target_ssh = manifest.get("installed_target_ssh")
 if installed_target_ssh is not None:
     if not isinstance(installed_target_ssh, dict) or not installed_target_ssh:
         raise SystemExit("mission installed_target_ssh must be an object when present")
@@ -398,7 +409,6 @@ if installed_target_ssh is not None:
     )
     validate_authorized_key_file("mission installed_target_ssh.authorized_key_relpath", authorized_key_path)
 
-selected_applications = manifest.get("selected_applications")
 if selected_applications is not None:
     if not isinstance(selected_applications, dict) or not selected_applications:
         raise SystemExit("mission selected_applications must be an object when present")
