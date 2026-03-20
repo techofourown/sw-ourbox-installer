@@ -3706,6 +3706,7 @@ fi
 
 export MISSION_DIR COMPOSE_ID COMPOSED_AT TARGET COMPOSER_REVISION ADAPTER_SOURCE_REPO ADAPTER_SOURCE_REVISION
 export VENDORED_ADAPTER_ROOT ADAPTER_RUNTIME_PROMPTS_JSON MINIMUM_MEDIA_SIZE_BYTES OUTPUT_KIND
+export SELECTED_INSTALLER_SUBSTRATE_REF SELECTED_OS_REF SELECTED_AIRGAP_REF
 export SELECTED_INSTALLER_SUBSTRATE_PINNED_REF SELECTED_INSTALLER_SUBSTRATE_DIGEST SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL
 export SELECTED_OS_PINNED_REF SELECTED_OS_DIGEST EXPECTED_OS_ARTIFACT_TYPE PLATFORM_CONTRACT_DIGEST PLATFORM_CONTRACT_SOURCE
 export PLATFORM_CONTRACT_REVISION PLATFORM_CONTRACT_VERSION PLATFORM_CONTRACT_CREATED SELECTED_OS_SELECTION_SOURCE SELECTED_OS_RELEASE_CHANNEL
@@ -3766,8 +3767,35 @@ for path in sorted(mission_dir.rglob("*")):
     )
 
 runtime_prompts = json.loads(os.environ["ADAPTER_RUNTIME_PROMPTS_JSON"])
+requested_os_ref = ""
+if os.environ["SELECTED_OS_SELECTION_SOURCE"] != "catalog":
+    requested_os_ref = os.environ.get("SELECTED_OS_REF", "")
+
+requested_airgap_ref = ""
+if os.environ["SELECTED_AIRGAP_SELECTION_SOURCE"] not in {"catalog", "application-catalogs"}:
+    requested_airgap_ref = os.environ.get("SELECTED_AIRGAP_REF", "")
+
+requested_source_catalogs = []
+resolved_source_catalogs = []
+summary_path = os.environ.get("MERGED_APPLICATION_SUMMARY_FILE", "")
+if os.environ.get("APPLICATION_CATALOG_PRESENT") == "1" and summary_path:
+    with open(summary_path, "r", encoding="utf-8") as handle:
+        summary = json.load(handle)
+    raw_sources = summary.get("source_catalogs") or []
+    if isinstance(raw_sources, list):
+        resolved_source_catalogs = raw_sources
+        for raw_source in raw_sources:
+            if not isinstance(raw_source, dict):
+                continue
+            requested_source_catalogs.append(
+                {
+                    "catalog_id": str(raw_source.get("catalog_id", "")),
+                    "catalog_name": str(raw_source.get("catalog_name", "")),
+                }
+            )
+
 manifest = {
-    "schema": 1,
+    "schema": 2,
     "kind": "ourbox-mission",
     "compose_id": os.environ["COMPOSE_ID"],
     "created": os.environ["COMPOSED_AT"],
@@ -3795,13 +3823,6 @@ manifest = {
       "compose_strategy": os.environ["MISSION_COMPOSE_STRATEGY"],
       "mission_only": os.environ["MISSION_ONLY"] == "1",
     },
-    "substrate": {
-        "strategy": "published-installer-substrate",
-        "artifact_ref": os.environ["SELECTED_INSTALLER_SUBSTRATE_PINNED_REF"],
-        "artifact_digest": os.environ["SELECTED_INSTALLER_SUBSTRATE_DIGEST"],
-        "release_channel": os.environ["SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL"],
-        "compose_entrypoint": "tools/media-adapter/compose-media.sh",
-    },
     "platform_contract": {
         "digest": os.environ["PLATFORM_CONTRACT_DIGEST"],
         "source": os.environ["PLATFORM_CONTRACT_SOURCE"],
@@ -3809,61 +3830,91 @@ manifest = {
         "version": os.environ["PLATFORM_CONTRACT_VERSION"],
         "created": os.environ["PLATFORM_CONTRACT_CREATED"],
     },
-    "selected_os": {
-        "selection_source": os.environ["SELECTED_OS_SELECTION_SOURCE"],
-        "release_channel": os.environ["SELECTED_OS_RELEASE_CHANNEL"],
-        "artifact_ref": os.environ["SELECTED_OS_PINNED_REF"],
-        "artifact_digest": os.environ["SELECTED_OS_DIGEST"],
-        "artifact_type": os.environ["EXPECTED_OS_ARTIFACT_TYPE"],
-        "platform_contract_digest": os.environ["PLATFORM_CONTRACT_DIGEST"],
-        "payload": {
-            "relpath": os_payload.relative_to(mission_dir).as_posix(),
-            "sha256": sha256(os_payload),
-            "size_bytes": os_payload.stat().st_size,
+    "requested": {
+        "substrate": {
+            "strategy": "published-installer-substrate",
+            "release_channel": os.environ["SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL"],
+            "requested_ref": os.environ["SELECTED_INSTALLER_SUBSTRATE_REF"],
         },
-        "metadata_relpath": os_meta.relative_to(mission_dir).as_posix(),
+        "os": {
+            "selection_source": os.environ["SELECTED_OS_SELECTION_SOURCE"],
+            "release_channel": os.environ["SELECTED_OS_RELEASE_CHANNEL"],
+            "requested_ref": requested_os_ref,
+        },
+        "airgap": {
+            "selection_mode": os.environ["SELECTED_AIRGAP_SELECTION_MODE"],
+            "selection_source": os.environ["SELECTED_AIRGAP_SELECTION_SOURCE"],
+            "release_channel": os.environ["SELECTED_AIRGAP_RELEASE_CHANNEL"],
+            "requested_ref": requested_airgap_ref,
+        },
     },
-    "selected_airgap": {
-        "selection_mode": os.environ["SELECTED_AIRGAP_SELECTION_MODE"],
-        "selection_source": os.environ["SELECTED_AIRGAP_SELECTION_SOURCE"],
-        "release_channel": os.environ["SELECTED_AIRGAP_RELEASE_CHANNEL"],
-        "artifact_ref": os.environ["SELECTED_AIRGAP_PINNED_REF"],
-        "artifact_digest": os.environ["SELECTED_AIRGAP_DIGEST"],
-        "platform_contract_digest": os.environ["SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST"],
-        "arch": os.environ["SELECTED_AIRGAP_ARCH"],
-        "profile": os.environ["SELECTED_AIRGAP_PROFILE"],
-        "version": os.environ["SELECTED_AIRGAP_VERSION"],
-        "created": os.environ["SELECTED_AIRGAP_CREATED"],
-        "k3s_version": os.environ["SELECTED_AIRGAP_K3S_VERSION"],
-        "images_lock_sha256": os.environ["SELECTED_AIRGAP_IMAGES_LOCK_SHA256"],
-        "payload_relpath": airgap_payload.relative_to(mission_dir).as_posix(),
-        "manifest_relpath": airgap_manifest.relative_to(mission_dir).as_posix(),
-        "present_in_selected_os_payload": os.environ["SELECTED_AIRGAP_DIGEST"] == os.environ["BAKED_AIRGAP_DIGEST"],
+    "resolved": {
+        "substrate": {
+            "strategy": "published-installer-substrate",
+            "artifact_ref": os.environ["SELECTED_INSTALLER_SUBSTRATE_PINNED_REF"],
+            "artifact_digest": os.environ["SELECTED_INSTALLER_SUBSTRATE_DIGEST"],
+            "release_channel": os.environ["SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL"],
+            "compose_entrypoint": "tools/media-adapter/compose-media.sh",
+        },
+        "os": {
+            "selection_source": os.environ["SELECTED_OS_SELECTION_SOURCE"],
+            "release_channel": os.environ["SELECTED_OS_RELEASE_CHANNEL"],
+            "artifact_ref": os.environ["SELECTED_OS_PINNED_REF"],
+            "artifact_digest": os.environ["SELECTED_OS_DIGEST"],
+            "artifact_type": os.environ["EXPECTED_OS_ARTIFACT_TYPE"],
+            "platform_contract_digest": os.environ["PLATFORM_CONTRACT_DIGEST"],
+            "payload": {
+                "relpath": os_payload.relative_to(mission_dir).as_posix(),
+                "sha256": sha256(os_payload),
+                "size_bytes": os_payload.stat().st_size,
+            },
+            "metadata_relpath": os_meta.relative_to(mission_dir).as_posix(),
+        },
+        "airgap": {
+            "selection_mode": os.environ["SELECTED_AIRGAP_SELECTION_MODE"],
+            "selection_source": os.environ["SELECTED_AIRGAP_SELECTION_SOURCE"],
+            "release_channel": os.environ["SELECTED_AIRGAP_RELEASE_CHANNEL"],
+            "artifact_ref": os.environ["SELECTED_AIRGAP_PINNED_REF"],
+            "artifact_digest": os.environ["SELECTED_AIRGAP_DIGEST"],
+            "platform_contract_digest": os.environ["SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST"],
+            "arch": os.environ["SELECTED_AIRGAP_ARCH"],
+            "profile": os.environ["SELECTED_AIRGAP_PROFILE"],
+            "version": os.environ["SELECTED_AIRGAP_VERSION"],
+            "created": os.environ["SELECTED_AIRGAP_CREATED"],
+            "k3s_version": os.environ["SELECTED_AIRGAP_K3S_VERSION"],
+            "images_lock_sha256": os.environ["SELECTED_AIRGAP_IMAGES_LOCK_SHA256"],
+            "payload_relpath": airgap_payload.relative_to(mission_dir).as_posix(),
+            "manifest_relpath": airgap_manifest.relative_to(mission_dir).as_posix(),
+            "present_in_selected_os_payload": os.environ["SELECTED_AIRGAP_DIGEST"] == os.environ["BAKED_AIRGAP_DIGEST"],
+        },
     },
     "staged_files": staged_files,
 }
 
 if os.environ.get("APPLICATION_CATALOG_PRESENT") == "1":
-    source_catalogs = []
-    summary_path = os.environ.get("MERGED_APPLICATION_SUMMARY_FILE", "")
-    if summary_path:
-        with open(summary_path, "r", encoding="utf-8") as handle:
-            summary = json.load(handle)
-        raw_sources = summary.get("source_catalogs") or []
-        if isinstance(raw_sources, list):
-            source_catalogs = raw_sources
-    manifest["selected_applications"] = {
+    manifest["requested"]["applications"] = {
+        "catalog_id": os.environ["APPLICATION_CATALOG_ID"],
+        "catalog_name": os.environ["APPLICATION_CATALOG_NAME"],
+        "selection_mode": os.environ["SELECTED_APPLICATION_SELECTION_MODE"],
+        "selected_app_ids": json.loads(os.environ["SELECTED_APPLICATION_IDS_JSON"]),
+        "source_catalogs": requested_source_catalogs,
+    }
+    manifest["resolved"]["applications"] = {
         "catalog_id": os.environ["APPLICATION_CATALOG_ID"],
         "catalog_name": os.environ["APPLICATION_CATALOG_NAME"],
         "selection_mode": os.environ["SELECTED_APPLICATION_SELECTION_MODE"],
         "selected_app_ids": json.loads(os.environ["SELECTED_APPLICATION_IDS_JSON"]),
         "catalog_relpath": application_catalog.relative_to(mission_dir).as_posix(),
         "selection_relpath": selected_apps.relative_to(mission_dir).as_posix(),
-        "source_catalogs": source_catalogs,
+        "source_catalogs": resolved_source_catalogs,
     }
 
 if os.environ.get("SELECTED_INSTALLED_TARGET_SSH_MODE") == "host-generated-authorized-key":
-    manifest["installed_target_ssh"] = {
+    manifest["requested"]["installed_target_ssh"] = {
+        "mode": os.environ["SELECTED_INSTALLED_TARGET_SSH_MODE"],
+        "key_name": os.environ["SELECTED_INSTALLED_TARGET_SSH_KEY_NAME"],
+    }
+    manifest["resolved"]["installed_target_ssh"] = {
         "mode": os.environ["SELECTED_INSTALLED_TARGET_SSH_MODE"],
         "key_name": os.environ["SELECTED_INSTALLED_TARGET_SSH_KEY_NAME"],
         "authorized_key_relpath": installed_target_ssh_key.relative_to(mission_dir).as_posix(),

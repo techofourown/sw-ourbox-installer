@@ -82,7 +82,7 @@ printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFM7xJ0oE1W8rQx6wH4M7dQf3J6pV8nX2kL4
 
 cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
 {
-  "schema": 1,
+  "schema": 2,
   "kind": "ourbox-mission",
   "compose_id": "woodbox-fixture",
   "created": "2026-03-12T00:00:00Z",
@@ -116,53 +116,77 @@ cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
     "compose_strategy": "woodbox-fat-iso-with-host-selected-os-application-catalog-and-app-selection",
     "mission_only": false
   },
-  "substrate": {
-    "strategy": "published-installer-substrate",
-    "artifact_ref": "ghcr.io/example/ourbox-woodbox-installer@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-    "artifact_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-    "release_channel": "stable",
-    "compose_entrypoint": "tools/media-adapter/compose-media.sh"
-  },
   "platform_contract": {
     "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
-  "selected_os": {
-    "selection_source": "catalog",
-    "release_channel": "stable",
-    "artifact_ref": "ghcr.io/example/ourbox-woodbox-os@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-    "artifact_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-    "artifact_type": "application/vnd.techofourown.ourbox.woodbox.os-payload.v1",
-    "platform_contract_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "payload": {
-      "relpath": "artifacts/os/os-payload.tar.gz",
-      "sha256": "be3d5e9960cb84a33783cc670ccf3e2a01910868003719d8cb9f95f0d68088d9",
-      "size_bytes": 14
+  "requested": {
+    "substrate": {
+      "strategy": "published-installer-substrate",
+      "release_channel": "stable",
+      "requested_ref": "ghcr.io/example/ourbox-woodbox-installer:stable"
     },
-    "metadata_relpath": "artifacts/os/os.meta.env"
+    "os": {
+      "selection_source": "catalog",
+      "release_channel": "stable",
+      "requested_ref": ""
+    },
+    "airgap": {
+      "selection_mode": "host-selected",
+      "selection_source": "application-catalogs",
+      "release_channel": "",
+      "requested_ref": ""
+    },
+    "installed_target_ssh": {
+      "mode": "host-generated-authorized-key",
+      "key_name": "fixture-shared-dev"
+    }
   },
-  "selected_airgap": {
-    "selection_mode": "host-selected",
-    "selection_source": "application-catalogs",
-    "release_channel": "",
-    "artifact_ref": "ghcr.io/example/airgap-platform@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    "artifact_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    "platform_contract_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "arch": "amd64",
-    "profile": "demo-apps",
-    "version": "v0.0.1",
-    "created": "2026-03-12T00:00:00Z",
-    "k3s_version": "v1.35.0+k3s1",
-    "payload_relpath": "artifacts/airgap/airgap-platform.tar.gz",
-    "manifest_relpath": "artifacts/airgap/manifest.env",
-    "images_lock_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-    "present_in_selected_os_payload": false
-  },
-  "installed_target_ssh": {
-    "mode": "host-generated-authorized-key",
-    "key_name": "fixture-shared-dev",
-    "authorized_key_relpath": "artifacts/installed-target-ssh/authorized-key.pub",
-    "key_type": "ssh-ed25519",
-    "public_key_fingerprint": "SHA256:fixtureFingerprint0123456789abcdef=="
+  "resolved": {
+    "substrate": {
+      "strategy": "published-installer-substrate",
+      "artifact_ref": "ghcr.io/example/ourbox-woodbox-installer@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "artifact_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "release_channel": "stable",
+      "compose_entrypoint": "tools/media-adapter/compose-media.sh"
+    },
+    "os": {
+      "selection_source": "catalog",
+      "release_channel": "stable",
+      "artifact_ref": "ghcr.io/example/ourbox-woodbox-os@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "artifact_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "artifact_type": "application/vnd.techofourown.ourbox.woodbox.os-payload.v1",
+      "platform_contract_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "payload": {
+        "relpath": "artifacts/os/os-payload.tar.gz",
+        "sha256": "be3d5e9960cb84a33783cc670ccf3e2a01910868003719d8cb9f95f0d68088d9",
+        "size_bytes": 14
+      },
+      "metadata_relpath": "artifacts/os/os.meta.env"
+    },
+    "airgap": {
+      "selection_mode": "host-selected",
+      "selection_source": "application-catalogs",
+      "release_channel": "",
+      "artifact_ref": "ghcr.io/example/airgap-platform@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "artifact_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "platform_contract_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "arch": "amd64",
+      "profile": "demo-apps",
+      "version": "v0.0.1",
+      "created": "2026-03-12T00:00:00Z",
+      "k3s_version": "v1.35.0+k3s1",
+      "payload_relpath": "artifacts/airgap/airgap-platform.tar.gz",
+      "manifest_relpath": "artifacts/airgap/manifest.env",
+      "images_lock_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "present_in_selected_os_payload": false
+    },
+    "installed_target_ssh": {
+      "mode": "host-generated-authorized-key",
+      "key_name": "fixture-shared-dev",
+      "authorized_key_relpath": "artifacts/installed-target-ssh/authorized-key.pub",
+      "key_type": "ssh-ed25519",
+      "public_key_fingerprint": "SHA256:fixtureFingerprint0123456789abcdef=="
+    }
   },
   "staged_files": [
     {
