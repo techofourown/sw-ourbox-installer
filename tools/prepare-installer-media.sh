@@ -3778,7 +3778,7 @@ if os.environ["SELECTED_AIRGAP_SELECTION_SOURCE"] not in {"catalog", "applicatio
 requested_source_catalogs = []
 resolved_source_catalogs = []
 summary_path = os.environ.get("MERGED_APPLICATION_SUMMARY_FILE", "")
-if summary_path:
+if os.environ.get("APPLICATION_CATALOG_PRESENT") == "1" and summary_path:
     with open(summary_path, "r", encoding="utf-8") as handle:
         summary = json.load(handle)
     raw_sources = summary.get("source_catalogs") or []
