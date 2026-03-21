@@ -267,4 +267,99 @@ mapfile -t custom_pull_refs < "${PULL_LOG}"
   exit 1
 }
 
+MISMATCH_LATEST_REF="ghcr.io/example/custom-catalog:latest"
+MISMATCH_LATEST_PINNED_REF="ghcr.io/example/custom-catalog@sha256:7777777777777777777777777777777777777777777777777777777777777777"
+MISMATCH_BUNDLE_CACHE_DIR="${TMP_ROOT}/mismatch-bundle-cache"
+MISMATCH_BUNDLE_BUILD_DIR="${TMP_ROOT}/mismatch-bundle-build"
+mkdir -p "${MISMATCH_BUNDLE_CACHE_DIR}" "${MISMATCH_BUNDLE_BUILD_DIR}/bundle"
+
+cat > "${MISMATCH_BUNDLE_BUILD_DIR}/bundle/catalog.json" <<'EOF_MISMATCH_CATALOG'
+{
+  "schema": 1,
+  "kind": "ourbox-application-catalog",
+  "catalog_id": "custom-catalog",
+  "catalog_name": "Custom Catalog",
+  "catalog_description": "custom",
+  "default_app_ids": [
+    "custom-app"
+  ],
+  "apps": [
+    {
+      "id": "custom-app",
+      "app_uid": "example/custom-app",
+      "display_name": "Custom App",
+      "description": "custom app",
+      "service_name": "custom-app",
+      "service_port": 8080,
+      "host_template": "custom.{box_host}",
+      "path": "/",
+      "expected_status": 200,
+      "body_marker": "Custom App",
+      "route_description": "custom-app-root",
+      "default_backend": false,
+      "image_names": [
+        "custom-app"
+      ]
+    }
+  ]
+}
+EOF_MISMATCH_CATALOG
+
+cat > "${MISMATCH_BUNDLE_BUILD_DIR}/bundle/images.lock.json" <<'EOF_MISMATCH_IMAGES'
+{
+  "schema": 1,
+  "images": [
+    {
+      "name": "custom-app",
+      "ref": "ghcr.io/example/custom-app@sha256:8888888888888888888888888888888888888888888888888888888888888888"
+    }
+  ]
+}
+EOF_MISMATCH_IMAGES
+
+cat > "${MISMATCH_BUNDLE_BUILD_DIR}/bundle/manifest.env" <<'EOF_MISMATCH_MANIFEST'
+OURBOX_PLATFORM_CONTRACT_DIGEST=sha256:9999999999999999999999999999999999999999999999999999999999999999
+EOF_MISMATCH_MANIFEST
+
+cat > "${MISMATCH_BUNDLE_BUILD_DIR}/bundle/profile.env" <<'EOF_MISMATCH_PROFILE'
+OURBOX_PROFILE=custom
+EOF_MISMATCH_PROFILE
+
+tar -czf "${MISMATCH_BUNDLE_CACHE_DIR}/application-catalog-bundle.tar.gz" -C "${MISMATCH_BUNDLE_BUILD_DIR}/bundle" .
+sha256sum "${MISMATCH_BUNDLE_CACHE_DIR}/application-catalog-bundle.tar.gz" > "${MISMATCH_BUNDLE_CACHE_DIR}/application-catalog-bundle.tar.gz.sha256"
+
+cache_pull_oci_artifact() {
+  local ref="$1"
+  local _reuse="$2"
+  local outvar="$3"
+
+  [[ "${ref}" == "${MISMATCH_LATEST_REF}" ]] || {
+    echo "unexpected cache pull ref: ${ref}" >&2
+    return 1
+  }
+
+  OURBOX_CACHE_LAST_PINNED_REF="${MISMATCH_LATEST_PINNED_REF}"
+  OURBOX_CACHE_LAST_DIGEST="${MISMATCH_LATEST_PINNED_REF##*@}"
+  printf -v "${outvar}" '%s' "${MISMATCH_BUNDLE_CACHE_DIR}"
+}
+
+SELECTED_APPLICATION_CATALOG_SOURCES_JSON="$(parse_custom_application_catalog_refs_json "${MISMATCH_LATEST_REF}")"
+APPLICATION_SOURCE_RESOLUTIONS_JSON="{}"
+if ( prepare_merged_application_catalog "catalog-defaults" "[]" ) >"${TMP_ROOT}/mismatch-latest.out" 2>"${TMP_ROOT}/mismatch-latest.err"; then
+  echo "expected a direct latest bundle ref with the wrong contract digest to fail" >&2
+  exit 1
+fi
+
+grep -F "application catalog bundle contract digest mismatch" "${TMP_ROOT}/mismatch-latest.err" >/dev/null || {
+  echo "expected mismatch output to mention the contract digest failure" >&2
+  cat "${TMP_ROOT}/mismatch-latest.err" >&2
+  exit 1
+}
+
+grep -F "ghcr.io/example/custom-catalog:catalog-amd64" "${TMP_ROOT}/mismatch-latest.err" >/dev/null || {
+  echo "expected mismatch output to suggest the catalog index ref" >&2
+  cat "${TMP_ROOT}/mismatch-latest.err" >&2
+  exit 1
+}
+
 printf '[%s] upstream catalog defaults smoke passed\n' "$(date -Is)"

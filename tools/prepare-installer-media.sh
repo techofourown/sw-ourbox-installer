@@ -3090,6 +3090,8 @@ prepare_merged_application_catalog() {
   local pinned_ref=""
   local pinned_digest=""
   local manifest_contract_digest=""
+  local contract_hint=""
+  local suggested_index_ref=""
   local catalog_dump=""
   local -a catalog_fields=()
   local index=0
@@ -3166,8 +3168,13 @@ if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
 print(digest)
 PY
     )" || die "failed to parse application catalog bundle manifest metadata: ${pinned_ref}"
+    contract_hint=""
+    if [[ -n "${requested_artifact_ref}" ]] && ! is_pinned_ref "${requested_artifact_ref}"; then
+      suggested_index_ref="$(ref_repo_base "${requested_artifact_ref}"):catalog-${EXPECTED_AIRGAP_ARCH}"
+      contract_hint=" If you want automatic contract-compatible selection, pass the catalog index ref ${suggested_index_ref} instead."
+    fi
     [[ "${manifest_contract_digest}" == "${PLATFORM_CONTRACT_DIGEST}" ]] \
-      || die "application catalog bundle contract digest mismatch for ${pinned_ref}: expected ${PLATFORM_CONTRACT_DIGEST}, got ${manifest_contract_digest}"
+      || die "application catalog bundle contract digest mismatch for ${pinned_ref}: expected ${PLATFORM_CONTRACT_DIGEST}, got ${manifest_contract_digest}.${contract_hint}"
 
     catalog_dump="$(
       python3 - <<'PY' "${extracted_dir}/catalog.json"

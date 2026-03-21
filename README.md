@@ -99,7 +99,7 @@ Useful flags:
 - `--os-channel CHANNEL` to change the default OS lane offered in the host-side prompt
 - `--os-ref REF` to choose an explicit OS artifact ref instead of the interactive picker
 - `--airgap-channel CHANNEL[,CHANNEL...]` to preselect one or more application catalog ids in the prompt flow
-- `--airgap-ref REF[,REF...]` to choose one or more explicit application catalog bundle refs instead of the interactive picker
+- `--airgap-ref REF[,REF...]` to choose one or more explicit application catalog refs instead of the interactive picker; a ref may point at an exact bundle or at a catalog index such as `ghcr.io/example/catalog:catalog-amd64`, which will be resolved to the newest contract-compatible pinned bundle
 - `--all-apps` to install every app published by the merged catalog set
 - `--app-ids ID[,ID...]` to install an explicit subset of apps from the merged catalog set
 - `--app-source-resolutions APP_UID=CATALOG_ID[,APP_UID=CATALOG_ID...]` to resolve duplicate app sources non-interactively
