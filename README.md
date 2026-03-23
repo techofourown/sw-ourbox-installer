@@ -129,7 +129,7 @@ Installed-target SSH behavior:
 ## Repository contract
 
 - `schemas/mission-manifest.schema.json`
-  - schema for the staged mission manifest
+  - JSON Schema for the staged mission-manifest contract
 - `tools/cache.sh`
   - host-side OCI cache plumbing
 - `tools/vendor-adapter.sh`

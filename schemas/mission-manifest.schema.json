@@ -5,7 +5,6 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema",
     "kind",
     "compose_id",
     "created",
@@ -20,9 +19,6 @@
     "staged_files"
   ],
   "properties": {
-    "schema": {
-      "const": 2
-    },
     "kind": {
       "const": "ourbox-mission"
     },
