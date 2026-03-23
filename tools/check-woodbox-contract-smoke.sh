@@ -74,15 +74,50 @@ chmod +x "${AIRGAP_SOURCE_DIR}/k3s/k3s"
 printf 'fixture airgap images\n' > "${AIRGAP_SOURCE_DIR}/k3s/k3s-airgap-images-amd64.tar"
 printf '{"images":[]}\n' > "${AIRGAP_SOURCE_DIR}/platform/images.lock.json"
 printf 'PROFILE=demo-apps\n' > "${AIRGAP_SOURCE_DIR}/platform/profile.env"
+cat > "${AIRGAP_SOURCE_DIR}/platform/catalog.json" <<'EOF'
+{
+  "schema": 1,
+  "kind": "ourbox-application-catalog",
+  "catalog_id": "demo-apps",
+  "catalog_name": "Demo Apps",
+  "default_app_ids": [
+    "landing",
+    "dufs"
+  ],
+  "apps": [
+    {
+      "id": "landing",
+      "display_name": "Landing"
+    },
+    {
+      "id": "dufs",
+      "display_name": "Dufs"
+    }
+  ]
+}
+EOF
+cat > "${AIRGAP_SOURCE_DIR}/platform/selected-apps.json" <<'EOF'
+{
+  "schema": 1,
+  "kind": "ourbox-selected-applications",
+  "catalog_id": "demo-apps",
+  "selection_mode": "catalog-defaults",
+  "selected_app_ids": [
+    "landing",
+    "dufs"
+  ]
+}
+EOF
 printf 'fixture image tar\n' > "${AIRGAP_SOURCE_DIR}/platform/images/platform-demo.tar"
 tar -C "${AIRGAP_SOURCE_DIR}" -czf "${AIRGAP_DIR}/airgap-platform.tar.gz" k3s platform manifest.env
 printf '%s  %s\n' "$(sha256sum "${AIRGAP_DIR}/airgap-platform.tar.gz" | awk '{print $1}')" "airgap-platform.tar.gz" > "${AIRGAP_DIR}/airgap-platform.tar.gz.sha256"
 cp -f "${AIRGAP_SOURCE_DIR}/manifest.env" "${AIRGAP_DIR}/manifest.env"
+cp -f "${AIRGAP_SOURCE_DIR}/platform/catalog.json" "${AIRGAP_DIR}/catalog.json"
+cp -f "${AIRGAP_SOURCE_DIR}/platform/selected-apps.json" "${AIRGAP_DIR}/selected-apps.json"
 printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFM7xJ0oE1W8rQx6wH4M7dQf3J6pV8nX2kL4cR5sT6u7 fixture@host\n' > "${SSH_DIR}/authorized-key.pub"
 
 cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
 {
-  "schema": 2,
   "kind": "ourbox-mission",
   "compose_id": "woodbox-fixture",
   "created": "2026-03-12T00:00:00Z",
@@ -136,6 +171,21 @@ cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
       "release_channel": "",
       "requested_ref": ""
     },
+    "applications": {
+      "catalog_id": "demo-apps",
+      "catalog_name": "Demo Apps",
+      "selection_mode": "catalog-defaults",
+      "selected_app_ids": [
+        "landing",
+        "dufs"
+      ],
+      "source_catalogs": [
+        {
+          "catalog_id": "demo-apps",
+          "catalog_name": "Demo Apps"
+        }
+      ]
+    },
     "installed_target_ssh": {
       "mode": "host-generated-authorized-key",
       "key_name": "fixture-shared-dev"
@@ -179,6 +229,17 @@ cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
       "manifest_relpath": "artifacts/airgap/manifest.env",
       "images_lock_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       "present_in_selected_os_payload": false
+    },
+    "applications": {
+      "catalog_id": "demo-apps",
+      "catalog_name": "Demo Apps",
+      "selection_mode": "catalog-defaults",
+      "selected_app_ids": [
+        "landing",
+        "dufs"
+      ],
+      "catalog_relpath": "artifacts/airgap/catalog.json",
+      "selection_relpath": "artifacts/airgap/selected-apps.json"
     },
     "installed_target_ssh": {
       "mode": "host-generated-authorized-key",
@@ -224,6 +285,17 @@ bash "${ROOT}/vendor/woodbox/validate-media.sh" \
   --mission-dir "${MISSION_DIR}" \
   --os-payload "${OS_DIR}/os-payload.tar.gz" \
   --os-meta-env "${OS_DIR}/os.meta.env"
+
+# Also verify that too-old payload contracts are rejected.
+sed 's/^OURBOX_PLATFORM_CONTRACT_VERSION=.*/OURBOX_PLATFORM_CONTRACT_VERSION=v0.19.9/' \
+  "${ORIG_META_ENV}" > "${OS_DIR}/os.meta.env"
+if bash "${ROOT}/vendor/woodbox/validate-media.sh" \
+  --mission-dir "${MISSION_DIR}" \
+  --os-payload "${OS_DIR}/os-payload.tar.gz" \
+  --os-meta-env "${OS_DIR}/os.meta.env" >/dev/null 2>&1; then
+  die "vendored Woodbox validator accepted a too-old platform contract version"
+fi
+
 cp "${ORIG_META_ENV}" "${OS_DIR}/os.meta.env"
 
 printf 'set timeout=1\nmenuentry \"fixture\" {\n linux /casper/vmlinuz autoinstall ds=nocloud\\;s=file:///cdrom/nocloud/ ---\n}\n' \

@@ -189,7 +189,6 @@ for path in sorted(mission_dir.rglob("*")):
         )
 
 manifest = {
-    "schema": 2,
     "kind": "ourbox-mission",
     "compose_id": "matchbox-fixture",
     "created": "2026-03-17T00:00:00Z",

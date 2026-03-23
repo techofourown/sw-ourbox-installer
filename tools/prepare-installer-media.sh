@@ -3802,7 +3802,6 @@ if os.environ.get("APPLICATION_CATALOG_PRESENT") == "1" and summary_path:
             )
 
 manifest = {
-    "schema": 2,
     "kind": "ourbox-mission",
     "compose_id": os.environ["COMPOSE_ID"],
     "created": os.environ["COMPOSED_AT"],
