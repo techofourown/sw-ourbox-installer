@@ -134,12 +134,14 @@ Installed-target SSH behavior:
   - host-side OCI cache plumbing
 - `tools/vendor-adapter.sh`
   - copies target adapter surfaces into `vendor/`
+- `vendor/matchbox/`
+  - pinned snapshot of the Matchbox adapter surface used for phase-one execution
 - `vendor/woodbox/`
   - pinned snapshot of the Woodbox adapter surface used for phase-one execution
 
 Phase one uses the vendored adapter scripts as the execution surface and points
-them at the published Woodbox installer substrate artifact for target-specific
-media composition.
+them at the published installer substrate artifact for the selected target
+during target-specific media composition.
 
 Terminology note:
 
