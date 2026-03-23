@@ -534,14 +534,27 @@ payload_check="$(
     --allow GITHUB_RUN_ATTEMPT \
     --require OS_ARTIFACT_TYPE \
     --require OURBOX_PLATFORM_CONTRACT_DIGEST \
+    --require OURBOX_PLATFORM_CONTRACT_VERSION \
     --print OS_ARTIFACT_TYPE \
-    --print OURBOX_PLATFORM_CONTRACT_DIGEST
+    --print OURBOX_PLATFORM_CONTRACT_DIGEST \
+    --print OURBOX_PLATFORM_CONTRACT_VERSION
 )"
 mapfile -t payload_fields <<<"${payload_check}"
-[[ "${#payload_fields[@]}" -eq 2 ]] || die "failed to parse ${OS_META_ENV}"
+[[ "${#payload_fields[@]}" -eq 3 ]] || die "failed to parse ${OS_META_ENV}"
 [[ "${payload_fields[0]}" == "application/vnd.techofourown.ourbox.woodbox.os-payload.v1" ]] \
   || die "payload meta artifact type mismatch in ${OS_META_ENV}"
 [[ "${payload_fields[1]}" =~ ^sha256:[0-9a-f]{64}$ ]] \
   || die "payload meta contract digest missing or invalid in ${OS_META_ENV}"
+contract_version="${payload_fields[2]}"
+if [[ "${contract_version}" == "dev" ]]; then
+  : # edge-channel build — dev is emitted for push-to-main builds before semantic-release
+  : # tags the commit; it is definitionally newer than any tagged release
+elif [[ "${contract_version}" =~ ^v([0-9]+)\.([0-9]+)\. ]]; then
+  if (( 10#${BASH_REMATCH[1]} == 0 && 10#${BASH_REMATCH[2]} < 20 )); then
+    die "OS payload platform contract ${contract_version} predates the runtime app-surface capability (v0.20.0+ required); update the approved platform-contract snapshot in sw-ourbox-os"
+  fi
+else
+  die "payload meta OURBOX_PLATFORM_CONTRACT_VERSION is not a valid version string: ${contract_version}"
+fi
 
 log "Woodbox media adapter validation passed"

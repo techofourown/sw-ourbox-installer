@@ -285,6 +285,17 @@ bash "${ROOT}/vendor/woodbox/validate-media.sh" \
   --mission-dir "${MISSION_DIR}" \
   --os-payload "${OS_DIR}/os-payload.tar.gz" \
   --os-meta-env "${OS_DIR}/os.meta.env"
+
+# Also verify that too-old payload contracts are rejected.
+sed 's/^OURBOX_PLATFORM_CONTRACT_VERSION=.*/OURBOX_PLATFORM_CONTRACT_VERSION=v0.19.9/' \
+  "${ORIG_META_ENV}" > "${OS_DIR}/os.meta.env"
+if bash "${ROOT}/vendor/woodbox/validate-media.sh" \
+  --mission-dir "${MISSION_DIR}" \
+  --os-payload "${OS_DIR}/os-payload.tar.gz" \
+  --os-meta-env "${OS_DIR}/os.meta.env" >/dev/null 2>&1; then
+  die "vendored Woodbox validator accepted a too-old platform contract version"
+fi
+
 cp "${ORIG_META_ENV}" "${OS_DIR}/os.meta.env"
 
 printf 'set timeout=1\nmenuentry \"fixture\" {\n linux /casper/vmlinuz autoinstall ds=nocloud\\;s=file:///cdrom/nocloud/ ---\n}\n' \
