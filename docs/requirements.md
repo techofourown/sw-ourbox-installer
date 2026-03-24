@@ -64,7 +64,7 @@ implemented in phase one; some are mandatory direction even if follow-on phases
 - The operator must be able to choose both:
   - an OS artifact
   - one or more application catalogs (currently transported as
-    `airgap-platform` bundles)
+    `ourbox-substrate` bundles)
   while provisioning installer media on the host.
 - When the selected catalogs advertise catalog metadata, the operator must also
   be able to choose which applications from the merged effective catalog are
@@ -280,7 +280,7 @@ than phase one.
   supplied local artifact files as primary mission inputs.
 - In this document, "local file inputs" means files already present on the
   operator's workstation, such as a local OS payload tarball or local
-  `airgap-platform` tarball, chosen instead of a catalog or OCI ref.
+  `ourbox-substrate` tarball, chosen instead of a catalog or OCI ref.
 - Support for composing from those local files is parked for a later phase.
 
 ## Non-Requirements
@@ -316,7 +316,7 @@ These are explicitly not goals of the installer effort.
 ### 5. Arbitrary freeform app composition in phase one
 
 - Phase one is not required to generate arbitrary custom app sets from scratch.
-- Choosing among published `airgap-platform` bundles and explicit digests is
+- Choosing among published `ourbox-substrate` bundles and explicit digests is
   sufficient for the current architecture.
 - Operator-supplied local bundle inputs are later-scope, not part of the
   current execution contract.

@@ -145,6 +145,6 @@ during target-specific media composition.
 
 Terminology note:
 
-- the transport artifact is still named `airgap-platform` for compatibility
+- the transport artifact is named `ourbox-substrate`
 - the user-facing concept is now one or more application catalogs plus a
   selected app set from the merged effective catalog
