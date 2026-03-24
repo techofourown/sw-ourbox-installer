@@ -74,7 +74,7 @@ load_target_adapter_metadata
   || die "matchbox should not advertise installed-target SSH support"
 [[ "${APPLICATION_CATALOG_SOURCES_JSON}" == "[]" ]] \
   || die "matchbox should not advertise application catalog sources"
-[[ "${AIRGAP_REPO}" == "ghcr.io/techofourown/sw-ourbox-os/airgap-platform" ]] \
+[[ "${AIRGAP_REPO}" == "ghcr.io/techofourown/sw-ourbox-os/ourbox-substrate" ]] \
   || die "matchbox airgap bundle repo mismatch"
 [[ "${AIRGAP_CATALOG_TAG}" == "catalog-arm64" ]] \
   || die "matchbox airgap bundle catalog tag mismatch"
