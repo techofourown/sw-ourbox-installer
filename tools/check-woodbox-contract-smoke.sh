@@ -40,16 +40,16 @@ BUILD_TS=2026-03-12T00:00:00Z
 OURBOX_PLATFORM_CONTRACT_SOURCE=https://github.com/techofourown/sw-ourbox-os
 OURBOX_PLATFORM_CONTRACT_REVISION=abc123def456
 OURBOX_PLATFORM_CONTRACT_VERSION=v0.20.0
-OURBOX_AIRGAP_PLATFORM_REF=ghcr.io/example/airgap-platform@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-OURBOX_AIRGAP_PLATFORM_DIGEST=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-OURBOX_AIRGAP_PLATFORM_SOURCE=https://github.com/techofourown/sw-ourbox-os
-OURBOX_AIRGAP_PLATFORM_REVISION=abc123def456
-OURBOX_AIRGAP_PLATFORM_VERSION=v0.0.1
-OURBOX_AIRGAP_PLATFORM_CREATED=2026-03-12T00:00:00Z
-OURBOX_AIRGAP_PLATFORM_ARCH=amd64
-OURBOX_AIRGAP_PLATFORM_PROFILE=demo-apps
-OURBOX_AIRGAP_PLATFORM_K3S_VERSION=v1.35.0+k3s1
-OURBOX_AIRGAP_PLATFORM_IMAGES_LOCK_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+OURBOX_SUBSTRATE_REF=ghcr.io/example/ourbox-substrate@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+OURBOX_SUBSTRATE_DIGEST=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+OURBOX_SUBSTRATE_SOURCE=https://github.com/techofourown/sw-ourbox-os
+OURBOX_SUBSTRATE_REVISION=abc123def456
+OURBOX_SUBSTRATE_VERSION=v0.0.1
+OURBOX_SUBSTRATE_CREATED=2026-03-12T00:00:00Z
+OURBOX_SUBSTRATE_ARCH=amd64
+OURBOX_SUBSTRATE_PROFILE=demo-apps
+OURBOX_SUBSTRATE_K3S_VERSION=v1.35.0+k3s1
+OURBOX_SUBSTRATE_IMAGES_LOCK_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 OURBOX_BASE_ISO_URL=https://example.invalid/ubuntu.iso
 OURBOX_BASE_ISO_SHA256=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 K3S_VERSION=v1.35.0+k3s1
@@ -58,12 +58,12 @@ GITHUB_RUN_ATTEMPT=
 EOF
 
 cat > "${AIRGAP_SOURCE_DIR}/manifest.env" <<'EOF'
-OURBOX_AIRGAP_PLATFORM_SOURCE=https://github.com/techofourown/sw-ourbox-os
-OURBOX_AIRGAP_PLATFORM_REVISION=abc123def456
-OURBOX_AIRGAP_PLATFORM_VERSION=v0.0.1
-OURBOX_AIRGAP_PLATFORM_CREATED=2026-03-12T00:00:00Z
+OURBOX_SUBSTRATE_SOURCE=https://github.com/techofourown/sw-ourbox-os
+OURBOX_SUBSTRATE_REVISION=abc123def456
+OURBOX_SUBSTRATE_VERSION=v0.0.1
+OURBOX_SUBSTRATE_CREATED=2026-03-12T00:00:00Z
 OURBOX_PLATFORM_CONTRACT_DIGEST=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-AIRGAP_PLATFORM_ARCH=amd64
+OURBOX_SUBSTRATE_ARCH=amd64
 K3S_VERSION=v1.35.0+k3s1
 OURBOX_PLATFORM_PROFILE=demo-apps
 OURBOX_PLATFORM_IMAGES_LOCK_PATH=platform/images.lock.json
@@ -74,7 +74,11 @@ chmod +x "${AIRGAP_SOURCE_DIR}/k3s/k3s"
 printf 'fixture airgap images\n' > "${AIRGAP_SOURCE_DIR}/k3s/k3s-airgap-images-amd64.tar"
 printf '{"images":[]}\n' > "${AIRGAP_SOURCE_DIR}/platform/images.lock.json"
 printf 'PROFILE=demo-apps\n' > "${AIRGAP_SOURCE_DIR}/platform/profile.env"
-cat > "${AIRGAP_SOURCE_DIR}/platform/catalog.json" <<'EOF'
+printf 'fixture image tar\n' > "${AIRGAP_SOURCE_DIR}/platform/images/platform-demo.tar"
+tar -C "${AIRGAP_SOURCE_DIR}" -czf "${AIRGAP_DIR}/ourbox-substrate.tar.gz" k3s platform manifest.env
+printf '%s  %s\n' "$(sha256sum "${AIRGAP_DIR}/ourbox-substrate.tar.gz" | awk '{print $1}')" "ourbox-substrate.tar.gz" > "${AIRGAP_DIR}/ourbox-substrate.tar.gz.sha256"
+cp -f "${AIRGAP_SOURCE_DIR}/manifest.env" "${AIRGAP_DIR}/manifest.env"
+cat > "${AIRGAP_DIR}/catalog.json" <<'EOF'
 {
   "schema": 1,
   "kind": "ourbox-application-catalog",
@@ -96,7 +100,7 @@ cat > "${AIRGAP_SOURCE_DIR}/platform/catalog.json" <<'EOF'
   ]
 }
 EOF
-cat > "${AIRGAP_SOURCE_DIR}/platform/selected-apps.json" <<'EOF'
+cat > "${AIRGAP_DIR}/selected-apps.json" <<'EOF'
 {
   "schema": 1,
   "kind": "ourbox-selected-applications",
@@ -108,12 +112,6 @@ cat > "${AIRGAP_SOURCE_DIR}/platform/selected-apps.json" <<'EOF'
   ]
 }
 EOF
-printf 'fixture image tar\n' > "${AIRGAP_SOURCE_DIR}/platform/images/platform-demo.tar"
-tar -C "${AIRGAP_SOURCE_DIR}" -czf "${AIRGAP_DIR}/airgap-platform.tar.gz" k3s platform manifest.env
-printf '%s  %s\n' "$(sha256sum "${AIRGAP_DIR}/airgap-platform.tar.gz" | awk '{print $1}')" "airgap-platform.tar.gz" > "${AIRGAP_DIR}/airgap-platform.tar.gz.sha256"
-cp -f "${AIRGAP_SOURCE_DIR}/manifest.env" "${AIRGAP_DIR}/manifest.env"
-cp -f "${AIRGAP_SOURCE_DIR}/platform/catalog.json" "${AIRGAP_DIR}/catalog.json"
-cp -f "${AIRGAP_SOURCE_DIR}/platform/selected-apps.json" "${AIRGAP_DIR}/selected-apps.json"
 printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFM7xJ0oE1W8rQx6wH4M7dQf3J6pV8nX2kL4cR5sT6u7 fixture@host\n' > "${SSH_DIR}/authorized-key.pub"
 
 cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
@@ -217,7 +215,7 @@ cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
       "selection_mode": "host-selected",
       "selection_source": "application-catalogs",
       "release_channel": "",
-      "artifact_ref": "ghcr.io/example/airgap-platform@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "artifact_ref": "ghcr.io/example/ourbox-substrate@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "artifact_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "platform_contract_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "arch": "amd64",
@@ -225,7 +223,7 @@ cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
       "version": "v0.0.1",
       "created": "2026-03-12T00:00:00Z",
       "k3s_version": "v1.35.0+k3s1",
-      "payload_relpath": "artifacts/airgap/airgap-platform.tar.gz",
+      "payload_relpath": "artifacts/airgap/ourbox-substrate.tar.gz",
       "manifest_relpath": "artifacts/airgap/manifest.env",
       "images_lock_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       "present_in_selected_os_payload": false

@@ -3330,8 +3330,8 @@ stage_selected_airgap_bundle() {
   SELECTED_AIRGAP_PINNED_REF="${OURBOX_CACHE_LAST_PINNED_REF}"
   log_resolved_artifact_ref "application bundle" "${SELECTED_AIRGAP_REF}" "${SELECTED_AIRGAP_PINNED_REF}"
 
-  pulled_bundle="$(find_pulled_file "${airgap_cache_dir}" "airgap-platform.tar.gz")"
-  [[ -f "${pulled_bundle}" ]] || die "cached application bundle missing airgap-platform.tar.gz: ${airgap_cache_dir}"
+  pulled_bundle="$(find_pulled_file "${airgap_cache_dir}" "ourbox-substrate.tar.gz")"
+  [[ -f "${pulled_bundle}" ]] || die "cached application bundle missing ourbox-substrate.tar.gz: ${airgap_cache_dir}"
   pulled_bundle_sha="${pulled_bundle}.sha256"
   if [[ -f "${pulled_bundle_sha}" ]]; then
     expected_bundle_sha="$(awk 'NF>=1 {print $1; exit}' "${pulled_bundle_sha}")"
@@ -3355,36 +3355,34 @@ stage_selected_airgap_bundle() {
 
   manifest_dump="$(
     python3 "${VENDORED_METADATA_PARSER}" "${extracted_dir}/manifest.env" \
-      --allow OURBOX_AIRGAP_PLATFORM_SCHEMA \
-      --allow OURBOX_AIRGAP_PLATFORM_KIND \
-      --allow OURBOX_AIRGAP_PLATFORM_SOURCE \
-      --allow OURBOX_AIRGAP_PLATFORM_REVISION \
-      --allow OURBOX_AIRGAP_PLATFORM_VERSION \
-      --allow OURBOX_AIRGAP_PLATFORM_CREATED \
+      --allow OURBOX_SUBSTRATE_SOURCE \
+      --allow OURBOX_SUBSTRATE_REVISION \
+      --allow OURBOX_SUBSTRATE_VERSION \
+      --allow OURBOX_SUBSTRATE_CREATED \
       --allow OURBOX_PLATFORM_CONTRACT_REF \
       --allow OURBOX_PLATFORM_CONTRACT_DIGEST \
-      --allow AIRGAP_PLATFORM_ARCH \
+      --allow OURBOX_SUBSTRATE_ARCH \
       --allow K3S_VERSION \
       --allow OURBOX_PLATFORM_PROFILE \
       --allow OURBOX_PLATFORM_IMAGES_LOCK_PATH \
       --allow OURBOX_PLATFORM_IMAGES_LOCK_SHA256 \
-      --require OURBOX_AIRGAP_PLATFORM_SOURCE \
-      --require OURBOX_AIRGAP_PLATFORM_REVISION \
-      --require OURBOX_AIRGAP_PLATFORM_VERSION \
-      --require OURBOX_AIRGAP_PLATFORM_CREATED \
+      --require OURBOX_SUBSTRATE_SOURCE \
+      --require OURBOX_SUBSTRATE_REVISION \
+      --require OURBOX_SUBSTRATE_VERSION \
+      --require OURBOX_SUBSTRATE_CREATED \
       --require OURBOX_PLATFORM_CONTRACT_DIGEST \
-      --require AIRGAP_PLATFORM_ARCH \
+      --require OURBOX_SUBSTRATE_ARCH \
       --require K3S_VERSION \
       --require OURBOX_PLATFORM_PROFILE \
       --require OURBOX_PLATFORM_IMAGES_LOCK_PATH \
       --require OURBOX_PLATFORM_IMAGES_LOCK_SHA256 \
-      --print OURBOX_AIRGAP_PLATFORM_SOURCE \
-      --print OURBOX_AIRGAP_PLATFORM_REVISION \
-      --print OURBOX_AIRGAP_PLATFORM_VERSION \
-      --print OURBOX_AIRGAP_PLATFORM_CREATED \
+      --print OURBOX_SUBSTRATE_SOURCE \
+      --print OURBOX_SUBSTRATE_REVISION \
+      --print OURBOX_SUBSTRATE_VERSION \
+      --print OURBOX_SUBSTRATE_CREATED \
       --print OURBOX_PLATFORM_CONTRACT_REF \
       --print OURBOX_PLATFORM_CONTRACT_DIGEST \
-      --print AIRGAP_PLATFORM_ARCH \
+      --print OURBOX_SUBSTRATE_ARCH \
       --print K3S_VERSION \
       --print OURBOX_PLATFORM_PROFILE \
       --print OURBOX_PLATFORM_IMAGES_LOCK_SHA256
@@ -3397,9 +3395,9 @@ stage_selected_airgap_bundle() {
   [[ "${manifest_fields[6]}" == "${EXPECTED_AIRGAP_ARCH}" ]] \
     || die "application bundle arch mismatch for ${SELECTED_AIRGAP_PINNED_REF}: expected ${EXPECTED_AIRGAP_ARCH}, got ${manifest_fields[6]}"
 
-  cp -f "${pulled_bundle}" "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz"
-  printf '%s  %s\n' "$(sha256_file "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz")" "airgap-platform.tar.gz" \
-    > "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz.sha256"
+  cp -f "${pulled_bundle}" "${AIRGAP_STAGE_DIR}/ourbox-substrate.tar.gz"
+  printf '%s  %s\n' "$(sha256_file "${AIRGAP_STAGE_DIR}/ourbox-substrate.tar.gz")" "ourbox-substrate.tar.gz" \
+    > "${AIRGAP_STAGE_DIR}/ourbox-substrate.tar.gz.sha256"
   cp -f "${extracted_dir}/manifest.env" "${AIRGAP_STAGE_DIR}/manifest.env"
   printf '%s\n' "${SELECTED_AIRGAP_PINNED_REF}" > "${AIRGAP_STAGE_DIR}/artifact.ref"
 
@@ -3407,8 +3405,8 @@ stage_selected_airgap_bundle() {
   SELECTED_AIRGAP_REVISION="${manifest_fields[1]}"
   SELECTED_AIRGAP_VERSION="${manifest_fields[2]}"
   SELECTED_AIRGAP_CREATED="${manifest_fields[3]}"
-  SELECTED_AIRGAP_PLATFORM_CONTRACT_REF="${manifest_fields[4]}"
-  SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST="${manifest_fields[5]}"
+  SELECTED_SUBSTRATE_CONTRACT_REF="${manifest_fields[4]}"
+  SELECTED_SUBSTRATE_CONTRACT_DIGEST="${manifest_fields[5]}"
   SELECTED_AIRGAP_ARCH="${manifest_fields[6]}"
   SELECTED_AIRGAP_K3S_VERSION="${manifest_fields[7]}"
   SELECTED_AIRGAP_PROFILE="${manifest_fields[8]}"
@@ -3488,27 +3486,25 @@ PY
   bundle_version="host-selected-${APPLICATION_CATALOG_ID}"
 
   cat > "${synthetic_root}/manifest.env" <<EOF_MANIFEST
-OURBOX_AIRGAP_PLATFORM_SCHEMA=1
-OURBOX_AIRGAP_PLATFORM_KIND=airgap-platform
-OURBOX_AIRGAP_PLATFORM_SOURCE=https://github.com/techofourown/sw-ourbox-installer
-OURBOX_AIRGAP_PLATFORM_REVISION=${COMPOSER_REVISION}
-OURBOX_AIRGAP_PLATFORM_VERSION=${bundle_version}
-OURBOX_AIRGAP_PLATFORM_CREATED=${COMPOSED_AT}
+OURBOX_SUBSTRATE_SOURCE=https://github.com/techofourown/sw-ourbox-installer
+OURBOX_SUBSTRATE_REVISION=${COMPOSER_REVISION}
+OURBOX_SUBSTRATE_VERSION=${bundle_version}
+OURBOX_SUBSTRATE_CREATED=${COMPOSED_AT}
 OURBOX_PLATFORM_CONTRACT_REF=${PLATFORM_CONTRACT_SOURCE}
 OURBOX_PLATFORM_CONTRACT_DIGEST=${PLATFORM_CONTRACT_DIGEST}
-AIRGAP_PLATFORM_ARCH=${EXPECTED_AIRGAP_ARCH}
+OURBOX_SUBSTRATE_ARCH=${EXPECTED_AIRGAP_ARCH}
 K3S_VERSION=${BAKED_AIRGAP_K3S_VERSION}
 OURBOX_PLATFORM_PROFILE=${BAKED_AIRGAP_PROFILE}
 OURBOX_PLATFORM_IMAGES_LOCK_PATH=platform/images.lock.json
 OURBOX_PLATFORM_IMAGES_LOCK_SHA256=${merged_images_lock_sha}
 EOF_MANIFEST
 
-  tar -C "${synthetic_root}" -czf "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz" k3s platform manifest.env
-  synthetic_sha="$(sha256_file "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz")"
+  tar -C "${synthetic_root}" -czf "${AIRGAP_STAGE_DIR}/ourbox-substrate.tar.gz" k3s platform manifest.env
+  synthetic_sha="$(sha256_file "${AIRGAP_STAGE_DIR}/ourbox-substrate.tar.gz")"
   # Keep the artifact ref digest-pinned so the mission contract and downstream
   # validator can treat host-composed bundles like the rest of the stack.
   bundle_ref="host-composed.local/application-catalog/${APPLICATION_CATALOG_ID}@sha256:${synthetic_sha}"
-  printf '%s  %s\n' "${synthetic_sha}" "airgap-platform.tar.gz" > "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz.sha256"
+  printf '%s  %s\n' "${synthetic_sha}" "ourbox-substrate.tar.gz" > "${AIRGAP_STAGE_DIR}/ourbox-substrate.tar.gz.sha256"
   cp -f "${synthetic_root}/manifest.env" "${AIRGAP_STAGE_DIR}/manifest.env"
   printf '%s\n' "${bundle_ref}" > "${AIRGAP_STAGE_DIR}/artifact.ref"
 
@@ -3521,8 +3517,8 @@ EOF_MANIFEST
   SELECTED_AIRGAP_REVISION="${COMPOSER_REVISION}"
   SELECTED_AIRGAP_VERSION="${bundle_version}"
   SELECTED_AIRGAP_CREATED="${COMPOSED_AT}"
-  SELECTED_AIRGAP_PLATFORM_CONTRACT_REF="${PLATFORM_CONTRACT_SOURCE}"
-  SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST="${PLATFORM_CONTRACT_DIGEST}"
+  SELECTED_SUBSTRATE_CONTRACT_REF="${PLATFORM_CONTRACT_SOURCE}"
+  SELECTED_SUBSTRATE_CONTRACT_DIGEST="${PLATFORM_CONTRACT_DIGEST}"
   SELECTED_AIRGAP_ARCH="${EXPECTED_AIRGAP_ARCH}"
   SELECTED_AIRGAP_K3S_VERSION="${BAKED_AIRGAP_K3S_VERSION}"
   SELECTED_AIRGAP_PROFILE="${BAKED_AIRGAP_PROFILE}"
@@ -3578,16 +3574,16 @@ os_meta_dump="$(
     --allow OURBOX_PLATFORM_CONTRACT_REVISION \
     --allow OURBOX_PLATFORM_CONTRACT_VERSION \
     --allow OURBOX_PLATFORM_CONTRACT_DIGEST \
-    --allow OURBOX_AIRGAP_PLATFORM_REF \
-    --allow OURBOX_AIRGAP_PLATFORM_DIGEST \
-    --allow OURBOX_AIRGAP_PLATFORM_SOURCE \
-    --allow OURBOX_AIRGAP_PLATFORM_REVISION \
-    --allow OURBOX_AIRGAP_PLATFORM_VERSION \
-    --allow OURBOX_AIRGAP_PLATFORM_CREATED \
-    --allow OURBOX_AIRGAP_PLATFORM_ARCH \
-    --allow OURBOX_AIRGAP_PLATFORM_PROFILE \
-    --allow OURBOX_AIRGAP_PLATFORM_K3S_VERSION \
-    --allow OURBOX_AIRGAP_PLATFORM_IMAGES_LOCK_SHA256 \
+    --allow OURBOX_SUBSTRATE_REF \
+    --allow OURBOX_SUBSTRATE_DIGEST \
+    --allow OURBOX_SUBSTRATE_SOURCE \
+    --allow OURBOX_SUBSTRATE_REVISION \
+    --allow OURBOX_SUBSTRATE_VERSION \
+    --allow OURBOX_SUBSTRATE_CREATED \
+    --allow OURBOX_SUBSTRATE_ARCH \
+    --allow OURBOX_SUBSTRATE_PROFILE \
+    --allow OURBOX_SUBSTRATE_K3S_VERSION \
+    --allow OURBOX_SUBSTRATE_IMAGES_LOCK_SHA256 \
     --allow OURBOX_BASE_ISO_URL \
     --allow OURBOX_BASE_ISO_SHA256 \
     --allow K3S_VERSION \
@@ -3601,16 +3597,16 @@ os_meta_dump="$(
     --print OURBOX_PLATFORM_CONTRACT_REVISION \
     --print OURBOX_PLATFORM_CONTRACT_VERSION \
     --print OURBOX_PLATFORM_CONTRACT_CREATED \
-    --print OURBOX_AIRGAP_PLATFORM_REF \
-    --print OURBOX_AIRGAP_PLATFORM_DIGEST \
-    --print OURBOX_AIRGAP_PLATFORM_SOURCE \
-    --print OURBOX_AIRGAP_PLATFORM_REVISION \
-    --print OURBOX_AIRGAP_PLATFORM_VERSION \
-    --print OURBOX_AIRGAP_PLATFORM_CREATED \
-    --print OURBOX_AIRGAP_PLATFORM_ARCH \
-    --print OURBOX_AIRGAP_PLATFORM_PROFILE \
-    --print OURBOX_AIRGAP_PLATFORM_K3S_VERSION \
-    --print OURBOX_AIRGAP_PLATFORM_IMAGES_LOCK_SHA256 \
+    --print OURBOX_SUBSTRATE_REF \
+    --print OURBOX_SUBSTRATE_DIGEST \
+    --print OURBOX_SUBSTRATE_SOURCE \
+    --print OURBOX_SUBSTRATE_REVISION \
+    --print OURBOX_SUBSTRATE_VERSION \
+    --print OURBOX_SUBSTRATE_CREATED \
+    --print OURBOX_SUBSTRATE_ARCH \
+    --print OURBOX_SUBSTRATE_PROFILE \
+    --print OURBOX_SUBSTRATE_K3S_VERSION \
+    --print OURBOX_SUBSTRATE_IMAGES_LOCK_SHA256 \
     --print OURBOX_VERSION \
     --print OURBOX_VARIANT \
     --print OURBOX_TARGET \
@@ -3718,8 +3714,8 @@ export SELECTED_INSTALLER_SUBSTRATE_PINNED_REF SELECTED_INSTALLER_SUBSTRATE_DIGE
 export SELECTED_OS_PINNED_REF SELECTED_OS_DIGEST EXPECTED_OS_ARTIFACT_TYPE PLATFORM_CONTRACT_DIGEST PLATFORM_CONTRACT_SOURCE
 export PLATFORM_CONTRACT_REVISION PLATFORM_CONTRACT_VERSION PLATFORM_CONTRACT_CREATED SELECTED_OS_SELECTION_SOURCE SELECTED_OS_RELEASE_CHANNEL
 export SELECTED_AIRGAP_PINNED_REF SELECTED_AIRGAP_DIGEST SELECTED_AIRGAP_SELECTION_MODE SELECTED_AIRGAP_SELECTION_SOURCE SELECTED_AIRGAP_RELEASE_CHANNEL
-export SELECTED_AIRGAP_SOURCE SELECTED_AIRGAP_REVISION SELECTED_AIRGAP_VERSION SELECTED_AIRGAP_CREATED SELECTED_AIRGAP_PLATFORM_CONTRACT_REF
-export SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST SELECTED_AIRGAP_ARCH SELECTED_AIRGAP_PROFILE SELECTED_AIRGAP_K3S_VERSION
+export SELECTED_AIRGAP_SOURCE SELECTED_AIRGAP_REVISION SELECTED_AIRGAP_VERSION SELECTED_AIRGAP_CREATED SELECTED_SUBSTRATE_CONTRACT_REF
+export SELECTED_SUBSTRATE_CONTRACT_DIGEST SELECTED_AIRGAP_ARCH SELECTED_AIRGAP_PROFILE SELECTED_AIRGAP_K3S_VERSION
 export SELECTED_AIRGAP_IMAGES_LOCK_SHA256 MISSION_ONLY BAKED_AIRGAP_DIGEST
 export APPLICATION_CATALOG_PRESENT APPLICATION_CATALOG_ID APPLICATION_CATALOG_NAME APPLICATION_CATALOG_DESCRIPTION
 export SELECTED_APPLICATION_SELECTION_MODE SELECTED_APPLICATION_IDS_JSON MERGED_APPLICATION_SUMMARY_FILE
@@ -3747,7 +3743,7 @@ from pathlib import Path
 mission_dir = Path(os.environ["MISSION_DIR"])
 os_payload = mission_dir / "artifacts" / "os" / "os-payload.tar.gz"
 os_meta = mission_dir / "artifacts" / "os" / "os.meta.env"
-airgap_payload = mission_dir / "artifacts" / "airgap" / "airgap-platform.tar.gz"
+airgap_payload = mission_dir / "artifacts" / "airgap" / "ourbox-substrate.tar.gz"
 airgap_manifest = mission_dir / "artifacts" / "airgap" / "manifest.env"
 application_catalog = mission_dir / "artifacts" / "airgap" / "catalog.json"
 selected_apps = mission_dir / "artifacts" / "airgap" / "selected-apps.json"
@@ -3882,7 +3878,7 @@ manifest = {
             "release_channel": os.environ["SELECTED_AIRGAP_RELEASE_CHANNEL"],
             "artifact_ref": os.environ["SELECTED_AIRGAP_PINNED_REF"],
             "artifact_digest": os.environ["SELECTED_AIRGAP_DIGEST"],
-            "platform_contract_digest": os.environ["SELECTED_AIRGAP_PLATFORM_CONTRACT_DIGEST"],
+            "platform_contract_digest": os.environ["SELECTED_SUBSTRATE_CONTRACT_DIGEST"],
             "arch": os.environ["SELECTED_AIRGAP_ARCH"],
             "profile": os.environ["SELECTED_AIRGAP_PROFILE"],
             "version": os.environ["SELECTED_AIRGAP_VERSION"],

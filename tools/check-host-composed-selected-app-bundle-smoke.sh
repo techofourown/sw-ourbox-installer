@@ -95,12 +95,12 @@ printf 'PROFILE=demo-apps\n' > "${PAYLOAD_ROOT}/platform/profile.env"
 printf '{"images":[]}\n' > "${PAYLOAD_ROOT}/platform/images.lock.json"
 printf 'fixture image tar\n' > "${PAYLOAD_ROOT}/platform/images/$(image_tar_name "ghcr.io/example/landing@sha256:1111111111111111111111111111111111111111111111111111111111111111")"
 cat > "${PAYLOAD_ROOT}/manifest.env" <<'EOF'
-OURBOX_AIRGAP_PLATFORM_SOURCE=https://github.com/techofourown/sw-ourbox-os
-OURBOX_AIRGAP_PLATFORM_REVISION=abc123def456
-OURBOX_AIRGAP_PLATFORM_VERSION=v0.0.1
-OURBOX_AIRGAP_PLATFORM_CREATED=2026-03-13T00:00:00Z
+OURBOX_SUBSTRATE_SOURCE=https://github.com/techofourown/sw-ourbox-os
+OURBOX_SUBSTRATE_REVISION=abc123def456
+OURBOX_SUBSTRATE_VERSION=v0.0.1
+OURBOX_SUBSTRATE_CREATED=2026-03-13T00:00:00Z
 OURBOX_PLATFORM_CONTRACT_DIGEST=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-AIRGAP_PLATFORM_ARCH=amd64
+OURBOX_SUBSTRATE_ARCH=amd64
 K3S_VERSION=v1.35.0+k3s1
 OURBOX_PLATFORM_PROFILE=demo-apps
 OURBOX_PLATFORM_IMAGES_LOCK_PATH=platform/images.lock.json
@@ -117,7 +117,7 @@ pull_and_save_image_tar() {
 
 synthesize_selected_application_bundle
 
-EXPECTED_SHA="$(sha256_file "${AIRGAP_STAGE_DIR}/airgap-platform.tar.gz")"
+EXPECTED_SHA="$(sha256_file "${AIRGAP_STAGE_DIR}/ourbox-substrate.tar.gz")"
 EXPECTED_REF="host-composed.local/application-catalog/${APPLICATION_CATALOG_ID}@sha256:${EXPECTED_SHA}"
 
 [[ "${SELECTED_AIRGAP_PINNED_REF}" == "${EXPECTED_REF}" ]] || {
