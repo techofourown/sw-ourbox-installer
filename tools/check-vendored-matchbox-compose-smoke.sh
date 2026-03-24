@@ -117,16 +117,16 @@ OURBOX_PLATFORM_CONTRACT_REVISION=abc123def456
 OURBOX_PLATFORM_CONTRACT_VERSION=v0.0.1
 OURBOX_PLATFORM_CONTRACT_CREATED=2026-03-17T00:00:00Z
 K3S_VERSION=v1.35.0+k3s1
-OURBOX_AIRGAP_PLATFORM_REF=ghcr.io/example/airgap-platform@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-OURBOX_AIRGAP_PLATFORM_DIGEST=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-OURBOX_AIRGAP_PLATFORM_SOURCE=https://github.com/techofourown/sw-ourbox-os
-OURBOX_AIRGAP_PLATFORM_REVISION=abc123def456
-OURBOX_AIRGAP_PLATFORM_VERSION=v0.0.1
-OURBOX_AIRGAP_PLATFORM_CREATED=2026-03-17T00:00:00Z
-OURBOX_AIRGAP_PLATFORM_ARCH=arm64
-OURBOX_AIRGAP_PLATFORM_PROFILE=demo-apps
-OURBOX_AIRGAP_PLATFORM_K3S_VERSION=v1.35.0+k3s1
-OURBOX_AIRGAP_PLATFORM_IMAGES_LOCK_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+OURBOX_SUBSTRATE_REF=ghcr.io/example/ourbox-substrate@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+OURBOX_SUBSTRATE_DIGEST=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+OURBOX_SUBSTRATE_SOURCE=https://github.com/techofourown/sw-ourbox-os
+OURBOX_SUBSTRATE_REVISION=abc123def456
+OURBOX_SUBSTRATE_VERSION=v0.0.1
+OURBOX_SUBSTRATE_CREATED=2026-03-17T00:00:00Z
+OURBOX_SUBSTRATE_ARCH=arm64
+OURBOX_SUBSTRATE_PROFILE=demo-apps
+OURBOX_SUBSTRATE_K3S_VERSION=v1.35.0+k3s1
+OURBOX_SUBSTRATE_IMAGES_LOCK_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 EOF
 
 AIRGAP_SOURCE_DIR="${TMP}/airgap-source"
@@ -138,20 +138,20 @@ printf '{"images":[]}\n' > "${AIRGAP_SOURCE_DIR}/platform/images.lock.json"
 printf 'PROFILE=demo-apps\n' > "${AIRGAP_SOURCE_DIR}/platform/profile.env"
 printf 'fixture image tar\n' > "${AIRGAP_SOURCE_DIR}/platform/images/platform-demo.tar"
 cat > "${AIRGAP_SOURCE_DIR}/manifest.env" <<'EOF'
-OURBOX_AIRGAP_PLATFORM_SOURCE=https://github.com/techofourown/sw-ourbox-os
-OURBOX_AIRGAP_PLATFORM_REVISION=abc123def456
-OURBOX_AIRGAP_PLATFORM_VERSION=v0.0.1
-OURBOX_AIRGAP_PLATFORM_CREATED=2026-03-17T00:00:00Z
+OURBOX_SUBSTRATE_SOURCE=https://github.com/techofourown/sw-ourbox-os
+OURBOX_SUBSTRATE_REVISION=abc123def456
+OURBOX_SUBSTRATE_VERSION=v0.0.1
+OURBOX_SUBSTRATE_CREATED=2026-03-17T00:00:00Z
 OURBOX_PLATFORM_CONTRACT_DIGEST=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-AIRGAP_PLATFORM_ARCH=arm64
+OURBOX_SUBSTRATE_ARCH=arm64
 K3S_VERSION=v1.35.0+k3s1
 OURBOX_PLATFORM_PROFILE=demo-apps
 OURBOX_PLATFORM_IMAGES_LOCK_PATH=platform/images.lock.json
 OURBOX_PLATFORM_IMAGES_LOCK_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 EOF
-tar -C "${AIRGAP_SOURCE_DIR}" -czf "${AIRGAP_DIR}/airgap-platform.tar.gz" k3s platform manifest.env
-printf '%s  %s\n' "$(sha256sum "${AIRGAP_DIR}/airgap-platform.tar.gz" | awk '{print $1}')" "airgap-platform.tar.gz" \
-  > "${AIRGAP_DIR}/airgap-platform.tar.gz.sha256"
+tar -C "${AIRGAP_SOURCE_DIR}" -czf "${AIRGAP_DIR}/ourbox-substrate.tar.gz" k3s platform manifest.env
+printf '%s  %s\n' "$(sha256sum "${AIRGAP_DIR}/ourbox-substrate.tar.gz" | awk '{print $1}')" "ourbox-substrate.tar.gz" \
+  > "${AIRGAP_DIR}/ourbox-substrate.tar.gz.sha256"
 cp -f "${AIRGAP_SOURCE_DIR}/manifest.env" "${AIRGAP_DIR}/manifest.env"
 
 python3 - <<'PY' "${MISSION_DIR}" "${ROOT}/vendor/matchbox/adapter.json"
@@ -174,7 +174,7 @@ def sha256(path: pathlib.Path) -> str:
 
 os_payload = mission_dir / "artifacts/os/os.img.xz"
 os_meta = mission_dir / "artifacts/os/os.meta.env"
-airgap_payload = mission_dir / "artifacts/airgap/airgap-platform.tar.gz"
+airgap_payload = mission_dir / "artifacts/airgap/ourbox-substrate.tar.gz"
 airgap_manifest = mission_dir / "artifacts/airgap/manifest.env"
 
 staged_files = []
@@ -263,7 +263,7 @@ manifest = {
             "selection_mode": "application-catalogs",
             "selection_source": "catalog",
             "release_channel": "stable",
-            "artifact_ref": "ghcr.io/example/airgap-platform@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "artifact_ref": "ghcr.io/example/ourbox-substrate@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "artifact_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "platform_contract_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "arch": adapter["expected_airgap_arch"],
