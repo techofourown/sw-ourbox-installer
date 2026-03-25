@@ -23,7 +23,7 @@ ROOT="${HARNESS_ROOT}"
 TMP_ROOT="${HARNESS_TMP_ROOT}"
 
 MISSION_ROOT="${TMP_ROOT}/mission"
-AIRGAP_STAGE_DIR="${MISSION_ROOT}/artifacts/airgap"
+SUBSTRATE_STAGE_DIR="${MISSION_ROOT}/artifacts/substrate"
 MERGED_APPLICATION_CATALOG_FILE="${TMP_ROOT}/merged.catalog.json"
 MERGED_SELECTED_APPLICATIONS_FILE="${TMP_ROOT}/merged.selected-apps.json"
 MERGED_IMAGES_LOCK_FILE="${TMP_ROOT}/merged.images.lock.json"
@@ -31,13 +31,11 @@ OS_PAYLOAD="${TMP_ROOT}/os-payload.tar.gz"
 APPLICATION_CATALOG_ID="demo-apps"
 COMPOSER_REVISION="abc123def456"
 COMPOSED_AT="2026-03-13T00:00:00Z"
-PLATFORM_CONTRACT_SOURCE="https://github.com/techofourown/sw-ourbox-os"
-PLATFORM_CONTRACT_DIGEST="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-EXPECTED_AIRGAP_ARCH="amd64"
-BAKED_AIRGAP_K3S_VERSION="v1.35.0+k3s1"
-BAKED_AIRGAP_PROFILE="demo-apps"
+EXPECTED_SUBSTRATE_ARCH="amd64"
+BAKED_SUBSTRATE_K3S_VERSION="v1.35.0+k3s1"
+BAKED_SUBSTRATE_PROFILE="demo-apps"
 
-mkdir -p "${AIRGAP_STAGE_DIR}"
+mkdir -p "${SUBSTRATE_STAGE_DIR}"
 
 cat > "${MERGED_APPLICATION_CATALOG_FILE}" <<'EOF'
 {
@@ -86,11 +84,11 @@ cat > "${MERGED_IMAGES_LOCK_FILE}" <<'EOF'
 EOF
 
 PAYLOAD_ARCHIVE_ROOT="${TMP_ROOT}/payload-root"
-PAYLOAD_ROOT="${PAYLOAD_ARCHIVE_ROOT}/airgap"
+PAYLOAD_ROOT="${PAYLOAD_ARCHIVE_ROOT}/substrate"
 mkdir -p "${PAYLOAD_ROOT}/k3s" "${PAYLOAD_ROOT}/platform/images"
 printf '#!/bin/sh\nexit 0\n' > "${PAYLOAD_ROOT}/k3s/k3s"
 chmod +x "${PAYLOAD_ROOT}/k3s/k3s"
-printf 'fixture airgap image tar\n' > "${PAYLOAD_ROOT}/k3s/k3s-airgap-images-amd64.tar"
+printf 'fixture k3s image tar\n' > "${PAYLOAD_ROOT}/k3s/k3s-images-amd64.tar"
 printf 'PROFILE=demo-apps\n' > "${PAYLOAD_ROOT}/platform/profile.env"
 printf '{"images":[]}\n' > "${PAYLOAD_ROOT}/platform/images.lock.json"
 printf 'fixture image tar\n' > "${PAYLOAD_ROOT}/platform/images/$(image_tar_name "ghcr.io/example/landing@sha256:1111111111111111111111111111111111111111111111111111111111111111")"
@@ -99,7 +97,6 @@ OURBOX_SUBSTRATE_SOURCE=https://github.com/techofourown/sw-ourbox-os
 OURBOX_SUBSTRATE_REVISION=abc123def456
 OURBOX_SUBSTRATE_VERSION=v0.0.1
 OURBOX_SUBSTRATE_CREATED=2026-03-13T00:00:00Z
-OURBOX_PLATFORM_CONTRACT_DIGEST=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 OURBOX_SUBSTRATE_ARCH=amd64
 K3S_VERSION=v1.35.0+k3s1
 OURBOX_PLATFORM_PROFILE=demo-apps
@@ -117,18 +114,18 @@ pull_and_save_image_tar() {
 
 synthesize_selected_application_bundle
 
-EXPECTED_SHA="$(sha256_file "${AIRGAP_STAGE_DIR}/ourbox-substrate.tar.gz")"
+EXPECTED_SHA="$(sha256_file "${SUBSTRATE_STAGE_DIR}/ourbox-substrate.tar.gz")"
 EXPECTED_REF="host-composed.local/application-catalog/${APPLICATION_CATALOG_ID}@sha256:${EXPECTED_SHA}"
 
-[[ "${SELECTED_AIRGAP_PINNED_REF}" == "${EXPECTED_REF}" ]] || {
-  echo "unexpected selected airgap ref: ${SELECTED_AIRGAP_PINNED_REF}" >&2
+[[ "${SELECTED_SUBSTRATE_PINNED_REF}" == "${EXPECTED_REF}" ]] || {
+  echo "unexpected selected substrate ref: ${SELECTED_SUBSTRATE_PINNED_REF}" >&2
   exit 1
 }
-[[ "${SELECTED_AIRGAP_DIGEST}" == "sha256:${EXPECTED_SHA}" ]] || {
-  echo "unexpected selected airgap digest: ${SELECTED_AIRGAP_DIGEST}" >&2
+[[ "${SELECTED_SUBSTRATE_DIGEST}" == "sha256:${EXPECTED_SHA}" ]] || {
+  echo "unexpected selected substrate digest: ${SELECTED_SUBSTRATE_DIGEST}" >&2
   exit 1
 }
-[[ "$(tr -d '\n' < "${AIRGAP_STAGE_DIR}/artifact.ref")" == "${EXPECTED_REF}" ]] || {
+[[ "$(tr -d '\n' < "${SUBSTRATE_STAGE_DIR}/artifact.ref")" == "${EXPECTED_REF}" ]] || {
   echo "artifact.ref did not match the digest-pinned host-composed bundle ref" >&2
   exit 1
 }

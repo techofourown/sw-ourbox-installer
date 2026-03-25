@@ -10,8 +10,8 @@ Current scope:
 - host-side application selection:
   - Woodbox: choose one or more application catalogs, merge them into one
     effective catalog, and select the desired app set
-  - Matchbox: choose one published arm64 application bundle bounded by the
-    selected OS payload's platform-contract digest
+  - Matchbox: choose one published arm64 application bundle for the selected
+    target architecture
 - mission output: write a `mission-manifest.json` plus staged OS bytes,
   staged application bytes, and selected metadata
 - media compose: delegate to a vendored target adapter snapshot while pulling
@@ -61,11 +61,11 @@ When run from a terminal, the host composer now mirrors the old installer UX:
 - if that upstream defaults artifact is missing or malformed, the installer
   fails fast instead of falling back to adapter-local default policy
 - official Woodbox catalog ids resolve through each catalog repo's published
-  `catalog.tsv`, so the installer picks a contract-compatible pinned bundle
-  instead of trusting floating bundle tags
+  `catalog.tsv`, so the installer picks a pinned bundle for the requested
+  channel and target architecture instead of trusting floating bundle tags
 - if an upstream catalog cannot be fetched or does not expose a compatible
-  row, the official default path fails fast instead of degrading to mutable
-  non-catalog tags
+  row for the requested channel and architecture, the official default path
+  fails fast instead of degrading to mutable non-catalog tags
 - if the selected catalogs provide the same app uid from multiple catalogs, it
   only stops when the duplicated app definitions differ; identical duplicates
   are deduped automatically
@@ -88,8 +88,8 @@ When run from a terminal, the host composer now mirrors the old installer UX:
 - the normal no-flag path flashes removable media; it does not keep extra build
   artifacts by default
 
-Passing `--target`, `--os-channel`, or `--airgap-channel` changes the default
-choice shown in those prompts. Passing `--os-ref` or `--airgap-ref` skips the
+Passing `--target`, `--os-channel`, or `--substrate-channel` changes the default
+choice shown in those prompts. Passing `--os-ref` or `--substrate-ref` skips the
 corresponding prompt and uses the exact ref non-interactively. Passing
 `--all-apps` or `--app-ids` skips the interactive application chooser.
 
@@ -98,8 +98,8 @@ Useful flags:
 - `--target TARGET` to preselect the target type instead of using the interactive target picker
 - `--os-channel CHANNEL` to change the default OS lane offered in the host-side prompt
 - `--os-ref REF` to choose an explicit OS artifact ref instead of the interactive picker
-- `--airgap-channel CHANNEL[,CHANNEL...]` to preselect one or more application catalog ids in the prompt flow
-- `--airgap-ref REF[,REF...]` to choose one or more explicit application catalog refs instead of the interactive picker; a ref may point at an exact bundle or at a catalog index such as `ghcr.io/example/catalog:catalog-amd64`, which will be resolved to the newest contract-compatible pinned bundle
+- `--substrate-channel CHANNEL[,CHANNEL...]` to preselect one or more application catalog ids in the prompt flow
+- `--substrate-ref REF[,REF...]` to choose one or more explicit application catalog refs instead of the interactive picker; a ref may point at an exact bundle or at a catalog index such as `ghcr.io/example/catalog:catalog-amd64`, which will be resolved to the newest pinned bundle for the requested channel and architecture
 - `--all-apps` to install every app published by the merged catalog set
 - `--app-ids ID[,ID...]` to install an explicit subset of apps from the merged catalog set
 - `--app-source-resolutions APP_UID=CATALOG_ID[,APP_UID=CATALOG_ID...]` to resolve duplicate app sources non-interactively

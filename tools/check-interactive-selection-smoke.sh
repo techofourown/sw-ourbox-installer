@@ -50,7 +50,6 @@ make_pinned_ref() {
   printf '%s@sha256:%064x\n' "${repo}" "${value}"
 }
 
-CONTRACT_DIGEST="sha256:1111111111111111111111111111111111111111111111111111111111111111"
 OS_STABLE_PINNED="$(make_pinned_ref "${OS_REPO}" 100)"
 OS_BETA_PINNED="$(make_pinned_ref "${OS_REPO}" 101)"
 OS_PAGE2_SELECTED_PINNED="$(make_pinned_ref "${OS_REPO}" 102)"
@@ -59,20 +58,20 @@ OS_CATALOG_DIR="${TMP_ROOT}/os-catalog"
 mkdir -p "${OS_CATALOG_DIR}"
 
 {
-  echo $'channel\ttag\tcreated\tversion\tplatform_contract_digest\tpinned_ref'
-  printf 'x86-beta\tx86-beta\t2026-03-13T12:00:00Z\tv1.1.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "${OS_BETA_PINNED}"
-  printf 'x86-stable\tx86-stable\t2026-03-12T12:00:00\tv1.0.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "${OS_STABLE_PINNED}"
-  printf 'x86-nightly\tx86-nightly\t2026-03-11T12:00:00Z\tv0.11.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 111)"
-  printf 'x86-exp-labs\tx86-exp-labs\t2026-03-10T12:00:00Z\tv0.10.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 110)"
-  printf 'x86-stable\tx86-stable-older-1\t2026-03-09T12:00:00Z\tv0.9.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 109)"
-  printf 'x86-beta\tx86-beta-older-1\t2026-03-08T12:00:00Z\tv0.8.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 108)"
-  printf 'x86-nightly\tx86-nightly-older-1\t2026-03-07T12:00:00Z\tv0.7.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 107)"
-  printf 'x86-exp-labs\tx86-exp-labs-older-1\t2026-03-06T12:00:00Z\tv0.6.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 106)"
-  printf 'x86-stable\tx86-stable-older-2\t2026-03-05T12:00:00Z\tv0.5.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 105)"
-  printf 'x86-beta\tx86-beta-older-2\t2026-03-04T12:00:00Z\tv0.4.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 104)"
-  printf 'x86-nightly\tx86-nightly-older-2\t2026-03-03T12:00:00Z\tv0.3.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 103)"
-  printf 'x86-exp-labs\tx86-exp-labs-older-2\t2026-03-02T12:00:00Z\tv0.2.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "${OS_PAGE2_SELECTED_PINNED}"
-  printf 'x86-stable\tx86-stable-oldest\t2026-03-01T12:00:00\tv0.1.0\t%s\t%s\n' "${CONTRACT_DIGEST}" "$(make_pinned_ref "${OS_REPO}" 100)"
+  echo $'channel\ttag\tcreated\tversion\tartifact_digest\tpinned_ref'
+  printf 'x86-beta\tx86-beta\t2026-03-13T12:00:00Z\tv1.1.0\tsha256:%064x\t%s\n' 101 "${OS_BETA_PINNED}"
+  printf 'x86-stable\tx86-stable\t2026-03-12T12:00:00\tv1.0.0\tsha256:%064x\t%s\n' 100 "${OS_STABLE_PINNED}"
+  printf 'x86-nightly\tx86-nightly\t2026-03-11T12:00:00Z\tv0.11.0\tsha256:%064x\t%s\n' 111 "$(make_pinned_ref "${OS_REPO}" 111)"
+  printf 'x86-exp-labs\tx86-exp-labs\t2026-03-10T12:00:00Z\tv0.10.0\tsha256:%064x\t%s\n' 110 "$(make_pinned_ref "${OS_REPO}" 110)"
+  printf 'x86-stable\tx86-stable-older-1\t2026-03-09T12:00:00Z\tv0.9.0\tsha256:%064x\t%s\n' 109 "$(make_pinned_ref "${OS_REPO}" 109)"
+  printf 'x86-beta\tx86-beta-older-1\t2026-03-08T12:00:00Z\tv0.8.0\tsha256:%064x\t%s\n' 108 "$(make_pinned_ref "${OS_REPO}" 108)"
+  printf 'x86-nightly\tx86-nightly-older-1\t2026-03-07T12:00:00Z\tv0.7.0\tsha256:%064x\t%s\n' 107 "$(make_pinned_ref "${OS_REPO}" 107)"
+  printf 'x86-exp-labs\tx86-exp-labs-older-1\t2026-03-06T12:00:00Z\tv0.6.0\tsha256:%064x\t%s\n' 106 "$(make_pinned_ref "${OS_REPO}" 106)"
+  printf 'x86-stable\tx86-stable-older-2\t2026-03-05T12:00:00Z\tv0.5.0\tsha256:%064x\t%s\n' 105 "$(make_pinned_ref "${OS_REPO}" 105)"
+  printf 'x86-beta\tx86-beta-older-2\t2026-03-04T12:00:00Z\tv0.4.0\tsha256:%064x\t%s\n' 104 "$(make_pinned_ref "${OS_REPO}" 104)"
+  printf 'x86-nightly\tx86-nightly-older-2\t2026-03-03T12:00:00Z\tv0.3.0\tsha256:%064x\t%s\n' 103 "$(make_pinned_ref "${OS_REPO}" 103)"
+  printf 'x86-exp-labs\tx86-exp-labs-older-2\t2026-03-02T12:00:00Z\tv0.2.0\tsha256:%064x\t%s\n' 102 "${OS_PAGE2_SELECTED_PINNED}"
+  printf 'x86-stable\tx86-stable-oldest\t2026-03-01T12:00:00\tv0.1.0\tsha256:%064x\t%s\n' 100 "$(make_pinned_ref "${OS_REPO}" 100)"
 } > "${OS_CATALOG_DIR}/catalog.tsv"
 
 try_cache_pull_oci_artifact() {
@@ -139,9 +138,9 @@ fi
 grep -F "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} is unavailable" "${TMP_ROOT}/missing-os.err" >/dev/null \
   || die "expected missing OS catalog failure to mention the unavailable catalog"
 
-AIRGAP_EXTRACT_DIR="${TMP_ROOT}/airgap-extract"
-mkdir -p "${AIRGAP_EXTRACT_DIR}/platform"
-cat > "${AIRGAP_EXTRACT_DIR}/platform/catalog.json" <<'EOF'
+SUBSTRATE_EXTRACT_DIR="${TMP_ROOT}/substrate-extract"
+mkdir -p "${SUBSTRATE_EXTRACT_DIR}/platform"
+cat > "${SUBSTRATE_EXTRACT_DIR}/platform/catalog.json" <<'EOF'
 {
   "schema": 1,
   "kind": "ourbox-application-catalog",

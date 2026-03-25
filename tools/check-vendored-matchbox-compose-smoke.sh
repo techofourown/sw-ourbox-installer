@@ -94,8 +94,8 @@ find_installer_root_partition() {
 
 MISSION_DIR="${TMP}/mission"
 OS_DIR="${MISSION_DIR}/artifacts/os"
-AIRGAP_DIR="${MISSION_DIR}/artifacts/airgap"
-mkdir -p "${OS_DIR}" "${AIRGAP_DIR}" "${MOUNT_DIR}" "${VERIFY_MOUNT_DIR}"
+SUBSTRATE_DIR="${MISSION_DIR}/artifacts/substrate"
+mkdir -p "${OS_DIR}" "${SUBSTRATE_DIR}" "${MOUNT_DIR}" "${VERIFY_MOUNT_DIR}"
 
 printf 'fixture matchbox payload\n' > "${OS_DIR}/os.img.xz"
 printf '%s  %s\n' "$(sha256sum "${OS_DIR}/os.img.xz" | awk '{print $1}')" "os.img.xz" \
@@ -111,11 +111,6 @@ OURBOX_VERSION=v0.0.1
 OURBOX_SKU=TOO-OBX-MBX-BASE-001
 BUILD_TS=2026-03-17T00:00:00Z
 GIT_SHA=abc123def456
-OURBOX_PLATFORM_CONTRACT_DIGEST=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-OURBOX_PLATFORM_CONTRACT_SOURCE=https://github.com/techofourown/sw-ourbox-os
-OURBOX_PLATFORM_CONTRACT_REVISION=abc123def456
-OURBOX_PLATFORM_CONTRACT_VERSION=v0.0.1
-OURBOX_PLATFORM_CONTRACT_CREATED=2026-03-17T00:00:00Z
 K3S_VERSION=v1.35.0+k3s1
 OURBOX_SUBSTRATE_REF=ghcr.io/example/ourbox-substrate@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 OURBOX_SUBSTRATE_DIGEST=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
@@ -129,30 +124,29 @@ OURBOX_SUBSTRATE_K3S_VERSION=v1.35.0+k3s1
 OURBOX_SUBSTRATE_IMAGES_LOCK_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 EOF
 
-AIRGAP_SOURCE_DIR="${TMP}/airgap-source"
-mkdir -p "${AIRGAP_SOURCE_DIR}/k3s" "${AIRGAP_SOURCE_DIR}/platform/images"
-printf '#!/bin/sh\nexit 0\n' > "${AIRGAP_SOURCE_DIR}/k3s/k3s"
-chmod +x "${AIRGAP_SOURCE_DIR}/k3s/k3s"
-printf 'fixture airgap images\n' > "${AIRGAP_SOURCE_DIR}/k3s/k3s-airgap-images-arm64.tar"
-printf '{"images":[]}\n' > "${AIRGAP_SOURCE_DIR}/platform/images.lock.json"
-printf 'PROFILE=demo-apps\n' > "${AIRGAP_SOURCE_DIR}/platform/profile.env"
-printf 'fixture image tar\n' > "${AIRGAP_SOURCE_DIR}/platform/images/platform-demo.tar"
-cat > "${AIRGAP_SOURCE_DIR}/manifest.env" <<'EOF'
+SUBSTRATE_SOURCE_DIR="${TMP}/substrate-source"
+mkdir -p "${SUBSTRATE_SOURCE_DIR}/k3s" "${SUBSTRATE_SOURCE_DIR}/platform/images"
+printf '#!/bin/sh\nexit 0\n' > "${SUBSTRATE_SOURCE_DIR}/k3s/k3s"
+chmod +x "${SUBSTRATE_SOURCE_DIR}/k3s/k3s"
+printf 'fixture substrate images\n' > "${SUBSTRATE_SOURCE_DIR}/k3s/k3s-images-arm64.tar"
+printf '{"images":[]}\n' > "${SUBSTRATE_SOURCE_DIR}/platform/images.lock.json"
+printf 'PROFILE=demo-apps\n' > "${SUBSTRATE_SOURCE_DIR}/platform/profile.env"
+printf 'fixture image tar\n' > "${SUBSTRATE_SOURCE_DIR}/platform/images/platform-demo.tar"
+cat > "${SUBSTRATE_SOURCE_DIR}/manifest.env" <<'EOF'
 OURBOX_SUBSTRATE_SOURCE=https://github.com/techofourown/sw-ourbox-os
 OURBOX_SUBSTRATE_REVISION=abc123def456
 OURBOX_SUBSTRATE_VERSION=v0.0.1
 OURBOX_SUBSTRATE_CREATED=2026-03-17T00:00:00Z
-OURBOX_PLATFORM_CONTRACT_DIGEST=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 OURBOX_SUBSTRATE_ARCH=arm64
 K3S_VERSION=v1.35.0+k3s1
 OURBOX_PLATFORM_PROFILE=demo-apps
 OURBOX_PLATFORM_IMAGES_LOCK_PATH=platform/images.lock.json
 OURBOX_PLATFORM_IMAGES_LOCK_SHA256=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 EOF
-tar -C "${AIRGAP_SOURCE_DIR}" -czf "${AIRGAP_DIR}/ourbox-substrate.tar.gz" k3s platform manifest.env
-printf '%s  %s\n' "$(sha256sum "${AIRGAP_DIR}/ourbox-substrate.tar.gz" | awk '{print $1}')" "ourbox-substrate.tar.gz" \
-  > "${AIRGAP_DIR}/ourbox-substrate.tar.gz.sha256"
-cp -f "${AIRGAP_SOURCE_DIR}/manifest.env" "${AIRGAP_DIR}/manifest.env"
+tar -C "${SUBSTRATE_SOURCE_DIR}" -czf "${SUBSTRATE_DIR}/ourbox-substrate.tar.gz" k3s platform manifest.env
+printf '%s  %s\n' "$(sha256sum "${SUBSTRATE_DIR}/ourbox-substrate.tar.gz" | awk '{print $1}')" "ourbox-substrate.tar.gz" \
+  > "${SUBSTRATE_DIR}/ourbox-substrate.tar.gz.sha256"
+cp -f "${SUBSTRATE_SOURCE_DIR}/manifest.env" "${SUBSTRATE_DIR}/manifest.env"
 
 python3 - <<'PY' "${MISSION_DIR}" "${ROOT}/vendor/matchbox/adapter.json"
 import hashlib
@@ -174,8 +168,8 @@ def sha256(path: pathlib.Path) -> str:
 
 os_payload = mission_dir / "artifacts/os/os.img.xz"
 os_meta = mission_dir / "artifacts/os/os.meta.env"
-airgap_payload = mission_dir / "artifacts/airgap/ourbox-substrate.tar.gz"
-airgap_manifest = mission_dir / "artifacts/airgap/manifest.env"
+substrate_payload = mission_dir / "artifacts/substrate/ourbox-substrate.tar.gz"
+substrate_manifest = mission_dir / "artifacts/substrate/manifest.env"
 
 staged_files = []
 for path in sorted(mission_dir.rglob("*")):
@@ -213,11 +207,8 @@ manifest = {
         "prompt_identity_on_target": True,
     },
     "mission_media": {
-        "compose_strategy": "matchbox-fat-image-with-host-selected-os-and-airgap",
+        "compose_strategy": "matchbox-fat-image-with-host-selected-os-and-substrate",
         "mission_only": False,
-    },
-    "platform_contract": {
-        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     },
     "requested": {
         "substrate": {
@@ -230,7 +221,7 @@ manifest = {
             "release_channel": "stable",
             "requested_ref": "",
         },
-        "airgap": {
+        "selected_substrate": {
             "selection_mode": "application-catalogs",
             "selection_source": "catalog",
             "release_channel": "stable",
@@ -251,7 +242,6 @@ manifest = {
             "artifact_ref": "ghcr.io/example/ourbox-matchbox-os@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
             "artifact_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
             "artifact_type": adapter["expected_os_artifact_type"],
-            "platform_contract_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "payload": {
                 "relpath": os_payload.relative_to(mission_dir).as_posix(),
                 "sha256": sha256(os_payload),
@@ -259,21 +249,20 @@ manifest = {
             },
             "metadata_relpath": os_meta.relative_to(mission_dir).as_posix(),
         },
-        "airgap": {
+        "selected_substrate": {
             "selection_mode": "application-catalogs",
             "selection_source": "catalog",
             "release_channel": "stable",
             "artifact_ref": "ghcr.io/example/ourbox-substrate@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "artifact_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            "platform_contract_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "arch": adapter["expected_airgap_arch"],
+            "arch": adapter["expected_substrate_arch"],
             "profile": "demo-apps",
             "version": "v0.0.1",
             "created": "2026-03-17T00:00:00Z",
             "k3s_version": "v1.35.0+k3s1",
             "images_lock_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-            "payload_relpath": airgap_payload.relative_to(mission_dir).as_posix(),
-            "manifest_relpath": airgap_manifest.relative_to(mission_dir).as_posix(),
+            "payload_relpath": substrate_payload.relative_to(mission_dir).as_posix(),
+            "manifest_relpath": substrate_manifest.relative_to(mission_dir).as_posix(),
             "present_in_selected_os_payload": False,
         },
     },

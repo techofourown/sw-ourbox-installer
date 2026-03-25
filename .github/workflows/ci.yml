@@ -40,7 +40,7 @@ jobs:
           bash -n tools/check-upstream-catalog-defaults-smoke.sh
           bash -n tools/check-vendored-flash-helper-smoke.sh
           bash -n tools/check-vendored-woodbox-pin.sh
-          bash -n tools/check-woodbox-contract-smoke.sh
+          bash -n tools/check-woodbox-substrate-smoke.sh
           bash -n vendor/matchbox/flash-installer-media.sh
           bash -n vendor/matchbox/lib.sh
           bash -n vendor/matchbox/compose-media.sh
@@ -137,5 +137,5 @@ jobs:
       - name: Vendored Matchbox compose smoke
         run: bash tools/check-vendored-matchbox-compose-smoke.sh
 
-      - name: Woodbox contract smoke
-        run: bash tools/check-woodbox-contract-smoke.sh
+      - name: Woodbox substrate smoke
+        run: bash tools/check-woodbox-substrate-smoke.sh

@@ -19,8 +19,8 @@ fi
 TARGET=""
 OS_CHANNEL="stable"
 OS_REF=""
-AIRGAP_CHANNEL=""
-AIRGAP_REF=""
+SUBSTRATE_CHANNEL=""
+SUBSTRATE_REF=""
 APP_IDS=""
 APP_SOURCE_RESOLUTIONS_SPEC=""
 ALL_APPS=0
@@ -48,7 +48,7 @@ SELECTED_INSTALLED_TARGET_SSH_KEY_TYPE=""
 CONTAINER_CLI=""
 APPLICATION_SOURCE_RESOLUTIONS_JSON="{}"
 INSTALLER_SUBSTRATE_FILENAME=""
-AIRGAP_SELECTION_MODEL=""
+SUBSTRATE_SELECTION_MODEL=""
 TARGET_SUPPORTS_APPLICATION_CATALOGS=0
 TARGET_SUPPORTS_INSTALLED_TARGET_SSH=0
 
@@ -72,12 +72,12 @@ Options:
                               non-interactive resolution when --os-ref is not set
                               (default: stable)
   --os-ref REF                Exact OS artifact ref to pull instead of catalog/channel resolution
-  --airgap-channel IDS        Preferred application catalog ids for interactive
-                              selection or non-interactive resolution after OS
-                              selection (comma-separated)
-  --airgap-ref REFS           Exact application catalog bundle refs to pull
-                              instead of selecting from the official catalog list
-                              (comma-separated)
+  --substrate-channel CHANNEL  Preferred published substrate channel for
+                              interactive selection or non-interactive
+                              resolution after OS selection
+  --substrate-ref REFS         Exact published substrate bundle refs to pull
+                              instead of selecting from the official substrate
+                              catalog
   --all-apps                  Install all applications from the merged selected
                               application catalogs without prompting
   --app-ids ID[,ID...]        Install an explicit comma-separated merged
@@ -572,36 +572,36 @@ for lane in ("stable", "beta", "nightly", "exp-labs"):
         raise SystemExit(f"adapter missing installer channel tag for {lane}")
 
 application_catalog_sources = official.get("application_catalog_sources")
-airgap_selection_model = str(adapter.get("airgap_selection_model", "")).strip()
+substrate_selection_model = str(adapter.get("substrate_selection_model", "")).strip()
 if isinstance(application_catalog_sources, list) and application_catalog_sources:
     selection_model = "application-catalogs"
-elif airgap_selection_model == "published-airgap-bundle":
-    selection_model = "published-airgap-bundle"
+elif substrate_selection_model == "published-substrate-bundle":
+    selection_model = "published-substrate-bundle"
 else:
     raise SystemExit(
-        "adapter must declare either official.application_catalog_sources or airgap_selection_model=published-airgap-bundle"
+        "adapter must declare either official.application_catalog_sources or substrate_selection_model=published-substrate-bundle"
     )
 
-airgap_repo = ""
-airgap_catalog_tag = ""
-airgap_stable = ""
-airgap_beta = ""
-airgap_nightly = ""
-airgap_exp_labs = ""
+substrate_repo = ""
+substrate_catalog_tag = ""
+substrate_stable = ""
+substrate_beta = ""
+substrate_nightly = ""
+substrate_exp_labs = ""
 install_defaults_ref = str(official.get("install_defaults_ref", "")).strip()
-if selection_model == "published-airgap-bundle":
-    airgap_repo = str(official.get("airgap_bundle_repo", "")).strip()
-    airgap_catalog_tag = str(official.get("airgap_bundle_catalog_tag", "")).strip()
-    airgap_tags = official.get("airgap_bundle_channel_tags") or {}
-    if not airgap_repo or not airgap_catalog_tag:
-        raise SystemExit("published-airgap-bundle adapters must declare airgap_bundle_repo and airgap_bundle_catalog_tag")
+if selection_model == "published-substrate-bundle":
+    substrate_repo = str(official.get("substrate_bundle_repo", "")).strip()
+    substrate_catalog_tag = str(official.get("substrate_bundle_catalog_tag", "")).strip()
+    substrate_tags = official.get("substrate_bundle_channel_tags") or {}
+    if not substrate_repo or not substrate_catalog_tag:
+        raise SystemExit("published-substrate-bundle adapters must declare substrate_bundle_repo and substrate_bundle_catalog_tag")
     for lane in ("stable", "beta", "nightly", "exp-labs"):
-        if lane not in airgap_tags:
-            raise SystemExit(f"adapter missing airgap bundle channel tag for {lane}")
-    airgap_stable = str(airgap_tags["stable"])
-    airgap_beta = str(airgap_tags["beta"])
-    airgap_nightly = str(airgap_tags["nightly"])
-    airgap_exp_labs = str(airgap_tags["exp-labs"])
+        if lane not in substrate_tags:
+            raise SystemExit(f"adapter missing substrate bundle channel tag for {lane}")
+    substrate_stable = str(substrate_tags["stable"])
+    substrate_beta = str(substrate_tags["beta"])
+    substrate_nightly = str(substrate_tags["nightly"])
+    substrate_exp_labs = str(substrate_tags["exp-labs"])
 
 print("\n".join([
     str(official["os_repo"]),
@@ -611,7 +611,7 @@ print("\n".join([
     str(os_tags["nightly"]),
     str(os_tags["exp-labs"]),
     str(adapter["expected_os_artifact_type"]),
-    str(adapter["expected_airgap_arch"]),
+    str(adapter["expected_substrate_arch"]),
     str(official["installer_repo"]),
     str(installer_tags["stable"]),
     str(installer_tags["beta"]),
@@ -624,12 +624,12 @@ print("\n".join([
     install_defaults_ref,
     selection_model,
     json.dumps(application_catalog_sources if isinstance(application_catalog_sources, list) else []),
-    airgap_repo,
-    airgap_catalog_tag,
-    airgap_stable,
-    airgap_beta,
-    airgap_nightly,
-    airgap_exp_labs,
+    substrate_repo,
+    substrate_catalog_tag,
+    substrate_stable,
+    substrate_beta,
+    substrate_nightly,
+    substrate_exp_labs,
     "__OURBOX_ADAPTER_FIELDS_END__",
 ]))
 PY
@@ -648,7 +648,7 @@ PY
   OS_CHANNEL_TAG_NIGHTLY="${adapter_fields[4]}"
   OS_CHANNEL_TAG_EXP_LABS="${adapter_fields[5]}"
   EXPECTED_OS_ARTIFACT_TYPE="${adapter_fields[6]}"
-  EXPECTED_AIRGAP_ARCH="${adapter_fields[7]}"
+  EXPECTED_SUBSTRATE_ARCH="${adapter_fields[7]}"
   INSTALLER_REPO="${adapter_fields[8]}"
   INSTALLER_CHANNEL_TAG_STABLE="${adapter_fields[9]}"
   INSTALLER_CHANNEL_TAG_BETA="${adapter_fields[10]}"
@@ -659,28 +659,28 @@ PY
   ADAPTER_RUNTIME_PROMPTS_JSON="${adapter_fields[15]}"
   INSTALLER_SUBSTRATE_FILENAME="${adapter_fields[16]}"
   INSTALL_DEFAULTS_REF="${adapter_fields[17]}"
-  AIRGAP_SELECTION_MODEL="${adapter_fields[18]}"
+  SUBSTRATE_SELECTION_MODEL="${adapter_fields[18]}"
   APPLICATION_CATALOG_SOURCES_JSON="${adapter_fields[19]}"
-  AIRGAP_REPO="${adapter_fields[20]}"
-  AIRGAP_CATALOG_TAG="${adapter_fields[21]}"
-  AIRGAP_CHANNEL_TAG_STABLE="${adapter_fields[22]}"
-  AIRGAP_CHANNEL_TAG_BETA="${adapter_fields[23]}"
-  AIRGAP_CHANNEL_TAG_NIGHTLY="${adapter_fields[24]}"
-  AIRGAP_CHANNEL_TAG_EXP_LABS="${adapter_fields[25]}"
+  SUBSTRATE_REPO="${adapter_fields[20]}"
+  SUBSTRATE_CATALOG_TAG="${adapter_fields[21]}"
+  SUBSTRATE_CHANNEL_TAG_STABLE="${adapter_fields[22]}"
+  SUBSTRATE_CHANNEL_TAG_BETA="${adapter_fields[23]}"
+  SUBSTRATE_CHANNEL_TAG_NIGHTLY="${adapter_fields[24]}"
+  SUBSTRATE_CHANNEL_TAG_EXP_LABS="${adapter_fields[25]}"
 
   TARGET_SUPPORTS_APPLICATION_CATALOGS=0
   TARGET_SUPPORTS_INSTALLED_TARGET_SSH=0
-  case "${AIRGAP_SELECTION_MODEL}" in
+  case "${SUBSTRATE_SELECTION_MODEL}" in
     application-catalogs)
       TARGET_SUPPORTS_APPLICATION_CATALOGS=1
       TARGET_SUPPORTS_INSTALLED_TARGET_SSH=1
       ;;
-    published-airgap-bundle)
+    published-substrate-bundle)
       TARGET_SUPPORTS_APPLICATION_CATALOGS=0
       TARGET_SUPPORTS_INSTALLED_TARGET_SSH=0
       ;;
     *)
-      die "unsupported adapter selection model for target '${TARGET}': ${AIRGAP_SELECTION_MODEL}"
+      die "unsupported adapter selection model for target '${TARGET}': ${SUBSTRATE_SELECTION_MODEL}"
       ;;
   esac
 }
@@ -715,14 +715,14 @@ while [[ $# -gt 0 ]]; do
       OS_REF="$2"
       shift 2
       ;;
-    --airgap-channel)
-      [[ $# -ge 2 ]] || die "--airgap-channel requires a value"
-      AIRGAP_CHANNEL="$2"
+    --substrate-channel)
+      [[ $# -ge 2 ]] || die "--substrate-channel requires a value"
+      SUBSTRATE_CHANNEL="$2"
       shift 2
       ;;
-    --airgap-ref)
-      [[ $# -ge 2 ]] || die "--airgap-ref requires a value"
-      AIRGAP_REF="$2"
+    --substrate-ref)
+      [[ $# -ge 2 ]] || die "--substrate-ref requires a value"
+      SUBSTRATE_REF="$2"
       shift 2
       ;;
     --all-apps)
@@ -1275,28 +1275,29 @@ with open(catalog_tsv, "r", encoding="utf-8") as handle:
         tag = (row.get("tag") or "").strip()
         created = (row.get("created") or "").strip()
         version = (row.get("version") or "").strip()
-        contract = (row.get("platform_contract_digest") or "").strip()
+        artifact_digest = (row.get("artifact_digest") or "").strip()
         pinned_ref = (row.get("pinned_ref") or "").strip()
         created_key = parse_created(created)
         if created_key is None:
             continue
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", artifact_digest):
+            continue
         if not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", pinned_ref):
             continue
-        rows.append((created_key, created, row_channel, tag, version, contract, pinned_ref))
+        rows.append((created_key, created, row_channel, tag, version, artifact_digest, pinned_ref))
 
 rows.sort(key=lambda item: (item[0], item[3]), reverse=True)
-for _created_key, created, row_channel, tag, version, contract, pinned_ref in rows:
-    print("\t".join((row_channel, tag, created, version, contract, pinned_ref)))
+for _created_key, created, row_channel, tag, version, artifact_digest, pinned_ref in rows:
+    print("\t".join((row_channel, tag, created, version, artifact_digest, pinned_ref)))
 PY
 }
 
-select_airgap_ref_from_catalog() {
+select_substrate_ref_from_catalog() {
   local catalog_tsv="$1"
   local channel="$2"
-  local required_contract_digest="$3"
-  local required_arch="$4"
+  local required_arch="$3"
 
-  python3 - <<'PY' "${catalog_tsv}" "${channel}" "${required_contract_digest}" "${required_arch}"
+  python3 - <<'PY' "${catalog_tsv}" "${channel}" "${required_arch}"
 import csv
 from datetime import datetime, timezone
 import re
@@ -1318,13 +1319,12 @@ def parse_created(value: str):
     except ValueError:
         return None
 
-catalog_tsv, channel, digest, arch = sys.argv[1:]
+catalog_tsv, channel, arch = sys.argv[1:]
 rows = []
 with open(catalog_tsv, "r", encoding="utf-8") as handle:
     reader = csv.DictReader(handle, delimiter="\t")
     for row in reader:
         row_channel = (row.get("channel") or "").strip()
-        row_digest = (row.get("platform_contract_digest") or "").strip()
         row_arch = (row.get("arch") or "").strip()
         pinned_ref = (row.get("pinned_ref") or "").strip()
         created = (row.get("created") or "").strip()
@@ -1333,7 +1333,7 @@ with open(catalog_tsv, "r", encoding="utf-8") as handle:
             continue
         if row_channel != channel:
             continue
-        if row_arch != arch or row_digest != digest:
+        if row_arch != arch:
             continue
         if not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", pinned_ref):
             continue
@@ -1354,11 +1354,11 @@ render_os_catalog_entry() {
   local tag=""
   local created=""
   local version=""
-  local contract=""
+  local artifact_digest=""
   local pinned_ref=""
 
-  IFS=$'\t' read -r channel tag created version contract pinned_ref <<<"${entry}"
-  printf "  %d) %-12s %-30s %s %s %s\n" "${display_number}" "${channel}" "${tag}" "${version}" "${created}" "${contract}"
+  IFS=$'\t' read -r channel tag created version artifact_digest pinned_ref <<<"${entry}"
+  printf "  %d) %-12s %-30s %s %s %s\n" "${display_number}" "${channel}" "${tag}" "${version}" "${created}" "${artifact_digest}"
 }
 
 paginate_catalog_entries_interactive() {
@@ -1534,7 +1534,7 @@ select_os_ref_from_catalog_interactive() {
   local tag=""
   local created=""
   local version=""
-  local contract=""
+  local artifact_digest=""
   local pinned_ref=""
   local -a entries=()
 
@@ -1551,13 +1551,13 @@ select_os_ref_from_catalog_interactive() {
   fi
 
   paginate_catalog_entries_interactive "Catalog entries (${OS_REPO}:${OS_CATALOG_TAG})" entries render_os_catalog_entry chosen || return 1
-  IFS=$'\t' read -r channel tag created version contract pinned_ref <<<"${chosen}"
+  IFS=$'\t' read -r channel tag created version artifact_digest pinned_ref <<<"${chosen}"
   normalized_channel="$(normalize_release_channel "${channel}")"
   OS_CHANNEL="${normalized_channel}"
   SELECTED_OS_REF="${pinned_ref}"
   SELECTED_OS_SELECTION_SOURCE="catalog"
   SELECTED_OS_RELEASE_CHANNEL="${normalized_channel}"
-  log "Selected ${SELECTED_OS_REF} (channel=${normalized_channel}, version=${version}, contract=${contract})"
+  log "Selected ${SELECTED_OS_REF} (channel=${normalized_channel}, version=${version}, digest=${artifact_digest})"
 }
 
 prompt_custom_os_ref_interactive() {
@@ -1660,59 +1660,56 @@ determine_os_ref() {
   resolve_os_channel_ref "${OS_CHANNEL}"
 }
 
-resolve_airgap_channel_ref() {
-  local required_contract_digest="$1"
-  local channel="$2"
+resolve_substrate_channel_ref() {
+  local channel="$1"
   local catalog_cache_dir=""
   local catalog_tsv=""
   local catalog_ref=""
 
-  if try_cache_pull_oci_artifact "${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
+  if try_cache_pull_oci_artifact "${SUBSTRATE_REPO}:${SUBSTRATE_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
     catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
     if [[ -n "${catalog_tsv}" ]]; then
-      catalog_ref="$(select_airgap_ref_from_catalog "${catalog_tsv}" "${channel}" "${required_contract_digest}" "${EXPECTED_AIRGAP_ARCH}" || true)"
+      catalog_ref="$(select_substrate_ref_from_catalog "${catalog_tsv}" "${channel}" "${EXPECTED_SUBSTRATE_ARCH}" || true)"
       if is_pinned_ref "${catalog_ref}"; then
-        SELECTED_AIRGAP_SELECTION_MODE="host-selected"
-        SELECTED_AIRGAP_SELECTION_SOURCE="catalog"
-        SELECTED_AIRGAP_RELEASE_CHANNEL="${channel}"
-        SELECTED_AIRGAP_REF="${catalog_ref}"
+        SELECTED_SUBSTRATE_SELECTION_MODE="host-selected"
+        SELECTED_SUBSTRATE_SELECTION_SOURCE="catalog"
+        SELECTED_SUBSTRATE_RELEASE_CHANNEL="${channel}"
+        SELECTED_SUBSTRATE_REF="${catalog_ref}"
         return 0
       fi
     fi
-    die "application bundle catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} had no valid pinned row for lane ${channel} and contract ${required_contract_digest}"
+    die "application bundle catalog ${SUBSTRATE_REPO}:${SUBSTRATE_CATALOG_TAG} had no valid pinned row for lane ${channel}"
   fi
 
-  die "application bundle catalog ${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG} is unavailable; cannot resolve lane ${channel}"
+  die "application bundle catalog ${SUBSTRATE_REPO}:${SUBSTRATE_CATALOG_TAG} is unavailable; cannot resolve lane ${channel}"
 }
 
-resolve_default_airgap_ref() {
-  local required_contract_digest="$1"
-
-  if [[ -n "${AIRGAP_REF}" ]]; then
-    SELECTED_AIRGAP_SELECTION_MODE="explicit-ref"
-    SELECTED_AIRGAP_SELECTION_SOURCE="airgap-ref"
-    SELECTED_AIRGAP_RELEASE_CHANNEL=""
-    SELECTED_AIRGAP_REF="${AIRGAP_REF}"
+resolve_default_substrate_ref() {
+  if [[ -n "${SUBSTRATE_REF}" ]]; then
+    SELECTED_SUBSTRATE_SELECTION_MODE="explicit-ref"
+    SELECTED_SUBSTRATE_SELECTION_SOURCE="substrate-ref"
+    SELECTED_SUBSTRATE_RELEASE_CHANNEL=""
+    SELECTED_SUBSTRATE_REF="${SUBSTRATE_REF}"
     return 0
   fi
 
-  if [[ -z "${AIRGAP_CHANNEL}" ]]; then
-    AIRGAP_CHANNEL="stable"
+  if [[ -z "${SUBSTRATE_CHANNEL}" ]]; then
+    SUBSTRATE_CHANNEL="stable"
   fi
 
-  resolve_airgap_channel_ref "${required_contract_digest}" "${AIRGAP_CHANNEL}"
+  resolve_substrate_channel_ref "${SUBSTRATE_CHANNEL}"
 }
 
-show_airgap_default_choice() {
+show_substrate_default_choice() {
   local ref="$1"
 
   echo
   echo "Host-side application bundle selection"
-  echo "Default source : ${SELECTED_AIRGAP_SELECTION_SOURCE:-pending}"
+  echo "Default source : ${SELECTED_SUBSTRATE_SELECTION_SOURCE:-pending}"
   echo "Default: use application bundle '${ref}'"
   echo "Options:"
   echo "  [ENTER] Use default"
-  echo "  c       Choose lane (prefers newest contract-matching catalog row for that lane)"
+  echo "  c       Choose lane (prefers the newest pinned catalog row for that lane)"
   echo "  l       List published bundles"
   echo "  r       Enter custom OCI ref (tag or digest)"
   echo "  o       Override application bundle repo (custom registry/fork)"
@@ -1720,34 +1717,33 @@ show_airgap_default_choice() {
   echo
 }
 
-choose_airgap_channel_interactive() {
-  local required_contract_digest="$1"
+choose_substrate_channel_interactive() {
   local pick=""
   local custom_tag=""
 
   echo "Application bundle lanes:"
-  echo "  1) stable (${AIRGAP_CHANNEL_TAG_STABLE}) (recommended)"
-  echo "  2) beta (${AIRGAP_CHANNEL_TAG_BETA})"
-  echo "  3) nightly (${AIRGAP_CHANNEL_TAG_NIGHTLY})"
-  echo "  4) exp-labs (${AIRGAP_CHANNEL_TAG_EXP_LABS})"
+  echo "  1) stable (${SUBSTRATE_CHANNEL_TAG_STABLE}) (recommended)"
+  echo "  2) beta (${SUBSTRATE_CHANNEL_TAG_BETA})"
+  echo "  3) nightly (${SUBSTRATE_CHANNEL_TAG_NIGHTLY})"
+  echo "  4) exp-labs (${SUBSTRATE_CHANNEL_TAG_EXP_LABS})"
   echo "  5) custom tag name"
 
   read -r -p "Select channel [1-5]: " pick
   case "${pick}" in
-    1|"") AIRGAP_CHANNEL="stable" ;;
-    2) AIRGAP_CHANNEL="beta" ;;
-    3) AIRGAP_CHANNEL="nightly" ;;
-    4) AIRGAP_CHANNEL="exp-labs" ;;
+    1|"") SUBSTRATE_CHANNEL="stable" ;;
+    2) SUBSTRATE_CHANNEL="beta" ;;
+    3) SUBSTRATE_CHANNEL="nightly" ;;
+    4) SUBSTRATE_CHANNEL="exp-labs" ;;
     5)
       read -r -p "Enter tag: " custom_tag
       [[ -n "${custom_tag}" ]] || {
         log "Tag cannot be empty."
         return 1
       }
-      SELECTED_AIRGAP_SELECTION_MODE="host-selected"
-      SELECTED_AIRGAP_SELECTION_SOURCE="operator-override"
-      SELECTED_AIRGAP_RELEASE_CHANNEL=""
-      SELECTED_AIRGAP_REF="${AIRGAP_REPO}:${custom_tag}"
+      SELECTED_SUBSTRATE_SELECTION_MODE="host-selected"
+      SELECTED_SUBSTRATE_SELECTION_SOURCE="operator-override"
+      SELECTED_SUBSTRATE_RELEASE_CHANNEL=""
+      SELECTED_SUBSTRATE_REF="${SUBSTRATE_REPO}:${custom_tag}"
       return 0
       ;;
     *)
@@ -1756,45 +1752,10 @@ choose_airgap_channel_interactive() {
       ;;
   esac
 
-  resolve_airgap_channel_ref "${required_contract_digest}" "${AIRGAP_CHANNEL}"
+  resolve_substrate_channel_ref "${SUBSTRATE_CHANNEL}"
 }
 
-select_airgap_ref_from_catalog_interactive() {
-  local required_contract_digest="$1"
-  local catalog_cache_dir=""
-  local catalog_tsv=""
-  local chosen=""
-  local channel=""
-  local tag=""
-  local created=""
-  local version=""
-  local contract=""
-  local pinned_ref=""
-  local -a entries=()
-
-  if ! try_cache_pull_oci_artifact "${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
-    log "Application bundle catalog listing unavailable; skipping list."
-    return 1
-  fi
-
-  catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
-  mapfile -t entries < <(list_airgap_catalog_entries "${catalog_tsv}" "${required_contract_digest}" "${EXPECTED_AIRGAP_ARCH}")
-  if [[ "${#entries[@]}" -eq 0 ]]; then
-    log "Application bundle catalog (${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG}) contained no matching rows for arch=${EXPECTED_AIRGAP_ARCH} contract=${required_contract_digest}."
-    return 1
-  fi
-
-  paginate_catalog_entries_interactive "Application bundles (${AIRGAP_REPO}:${AIRGAP_CATALOG_TAG})" entries render_airgap_catalog_entry chosen || return 1
-  IFS=$'\t' read -r channel tag created version contract pinned_ref <<<"${chosen}"
-  AIRGAP_CHANNEL="$(normalize_release_channel "${channel}")"
-  SELECTED_AIRGAP_SELECTION_MODE="host-selected"
-  SELECTED_AIRGAP_SELECTION_SOURCE="catalog"
-  SELECTED_AIRGAP_RELEASE_CHANNEL="${AIRGAP_CHANNEL}"
-  SELECTED_AIRGAP_REF="${pinned_ref}"
-  log "Selected application bundle ${SELECTED_AIRGAP_REF} (lane=${AIRGAP_CHANNEL}, version=${version}, contract=${contract})"
-}
-
-prompt_custom_airgap_ref_interactive() {
+prompt_custom_substrate_ref_interactive() {
   local ref=""
 
   read -r -p "Enter full OCI ref (e.g., repo:tag or repo@sha256:...): " ref
@@ -1803,15 +1764,15 @@ prompt_custom_airgap_ref_interactive() {
     return 1
   }
 
-  SELECTED_AIRGAP_SELECTION_MODE="host-selected"
-  SELECTED_AIRGAP_SELECTION_SOURCE="operator-override"
-  SELECTED_AIRGAP_RELEASE_CHANNEL=""
-  SELECTED_AIRGAP_REF="${ref}"
+  SELECTED_SUBSTRATE_SELECTION_MODE="host-selected"
+  SELECTED_SUBSTRATE_SELECTION_SOURCE="operator-override"
+  SELECTED_SUBSTRATE_RELEASE_CHANNEL=""
+  SELECTED_SUBSTRATE_REF="${ref}"
 }
 
-override_airgap_repo_interactive() {
+override_substrate_repo_interactive() {
   local next_repo=""
-  local next_catalog="catalog-${EXPECTED_AIRGAP_ARCH}"
+  local next_catalog="catalog-${EXPECTED_SUBSTRATE_ARCH}"
   local user_catalog=""
 
   read -r -p "Enter OCI repo (e.g., ghcr.io/org/application-bundle): " next_repo
@@ -1820,63 +1781,59 @@ override_airgap_repo_interactive() {
     return 1
   }
 
-  AIRGAP_REPO="${next_repo}"
+  SUBSTRATE_REPO="${next_repo}"
   read -r -p "Catalog tag [${next_catalog}]: " user_catalog
   if [[ -n "${user_catalog}" ]]; then
-    AIRGAP_CATALOG_TAG="${user_catalog}"
+    SUBSTRATE_CATALOG_TAG="${user_catalog}"
   else
-    AIRGAP_CATALOG_TAG="${next_catalog}"
+    SUBSTRATE_CATALOG_TAG="${next_catalog}"
   fi
 
-  if [[ -z "${AIRGAP_CHANNEL}" ]]; then
-    AIRGAP_CHANNEL="stable"
+  if [[ -z "${SUBSTRATE_CHANNEL}" ]]; then
+    SUBSTRATE_CHANNEL="stable"
   fi
 
-  log "Application bundle repo override set to ${AIRGAP_REPO}"
+  log "Application bundle repo override set to ${SUBSTRATE_REPO}"
 }
 
-interactive_select_airgap_ref() {
-  local required_contract_digest="$1"
+interactive_select_substrate_ref() {
   local choice=""
   local default_ref=""
   local default_source=""
   local default_channel=""
   local default_mode=""
 
-  SELECTED_AIRGAP_REF=""
-  SELECTED_AIRGAP_SELECTION_MODE=""
-  SELECTED_AIRGAP_SELECTION_SOURCE=""
-  SELECTED_AIRGAP_RELEASE_CHANNEL=""
+  SELECTED_SUBSTRATE_REF=""
+  SELECTED_SUBSTRATE_SELECTION_MODE=""
+  SELECTED_SUBSTRATE_SELECTION_SOURCE=""
+  SELECTED_SUBSTRATE_RELEASE_CHANNEL=""
 
-  while [[ -z "${SELECTED_AIRGAP_REF}" ]]; do
-    resolve_default_airgap_ref "${required_contract_digest}"
-    default_ref="${SELECTED_AIRGAP_REF}"
-    default_mode="${SELECTED_AIRGAP_SELECTION_MODE}"
-    default_source="${SELECTED_AIRGAP_SELECTION_SOURCE}"
-    default_channel="${SELECTED_AIRGAP_RELEASE_CHANNEL}"
-    SELECTED_AIRGAP_REF=""
+  while [[ -z "${SELECTED_SUBSTRATE_REF}" ]]; do
+    resolve_default_substrate_ref
+    default_ref="${SELECTED_SUBSTRATE_REF}"
+    default_mode="${SELECTED_SUBSTRATE_SELECTION_MODE}"
+    default_source="${SELECTED_SUBSTRATE_SELECTION_SOURCE}"
+    default_channel="${SELECTED_SUBSTRATE_RELEASE_CHANNEL}"
+    SELECTED_SUBSTRATE_REF=""
 
-    show_airgap_default_choice "${default_ref}"
+    show_substrate_default_choice "${default_ref}"
     read -r -p "Choice: " choice
 
     case "${choice}" in
       "")
-        SELECTED_AIRGAP_REF="${default_ref}"
-        SELECTED_AIRGAP_SELECTION_MODE="${default_mode}"
-        SELECTED_AIRGAP_SELECTION_SOURCE="${default_source}"
-        SELECTED_AIRGAP_RELEASE_CHANNEL="${default_channel}"
+        SELECTED_SUBSTRATE_REF="${default_ref}"
+        SELECTED_SUBSTRATE_SELECTION_MODE="${default_mode}"
+        SELECTED_SUBSTRATE_SELECTION_SOURCE="${default_source}"
+        SELECTED_SUBSTRATE_RELEASE_CHANNEL="${default_channel}"
         ;;
       c)
-        choose_airgap_channel_interactive "${required_contract_digest}" || true
-        ;;
-      l)
-        select_airgap_ref_from_catalog_interactive "${required_contract_digest}" || true
+        choose_substrate_channel_interactive || true
         ;;
       r)
-        prompt_custom_airgap_ref_interactive || true
+        prompt_custom_substrate_ref_interactive || true
         ;;
       o)
-        override_airgap_repo_interactive || true
+        override_substrate_repo_interactive || true
         ;;
       q|Q)
         die "Mission compose aborted by user"
@@ -1888,23 +1845,21 @@ interactive_select_airgap_ref() {
   done
 }
 
-determine_airgap_ref() {
-  local required_contract_digest="$1"
-
-  if [[ -n "${AIRGAP_REF}" ]]; then
-    SELECTED_AIRGAP_SELECTION_MODE="explicit-ref"
-    SELECTED_AIRGAP_SELECTION_SOURCE="airgap-ref"
-    SELECTED_AIRGAP_RELEASE_CHANNEL=""
-    SELECTED_AIRGAP_REF="${AIRGAP_REF}"
+determine_substrate_ref() {
+  if [[ -n "${SUBSTRATE_REF}" ]]; then
+    SELECTED_SUBSTRATE_SELECTION_MODE="explicit-ref"
+    SELECTED_SUBSTRATE_SELECTION_SOURCE="substrate-ref"
+    SELECTED_SUBSTRATE_RELEASE_CHANNEL=""
+    SELECTED_SUBSTRATE_REF="${SUBSTRATE_REF}"
     return 0
   fi
 
   if interactive_selection_enabled; then
-    interactive_select_airgap_ref "${required_contract_digest}"
+    interactive_select_substrate_ref
     return 0
   fi
 
-  resolve_default_airgap_ref "${required_contract_digest}"
+  resolve_default_substrate_ref
 }
 SELECTED_APPLICATION_CATALOG_SOURCES_JSON="[]"
 SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY=""
@@ -1991,7 +1946,7 @@ resolve_default_application_catalog_sources_json() {
     load_application_catalog_defaults_from_install_defaults
   fi
   [[ -n "${APPLICATION_CATALOG_DEFAULT_IDS}" ]] \
-    || die "official application catalog defaults are missing from upstream install defaults; rerun with --airgap-channel or --airgap-ref to override explicitly"
+    || die "official application catalog defaults are missing from upstream install defaults; rerun with --substrate-channel or --substrate-ref to override explicitly"
   resolve_application_catalog_sources_from_ids "${APPLICATION_CATALOG_DEFAULT_IDS}"
 }
 
@@ -2300,14 +2255,14 @@ determine_application_catalog_sources() {
   SELECTED_APPLICATION_CATALOG_SOURCES_JSON="[]"
   SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY=""
 
-  if [[ -n "${AIRGAP_REF}" ]]; then
-    SELECTED_APPLICATION_CATALOG_SOURCES_JSON="$(parse_custom_application_catalog_refs_json "${AIRGAP_REF}")"
+  if [[ -n "${SUBSTRATE_REF}" ]]; then
+    SELECTED_APPLICATION_CATALOG_SOURCES_JSON="$(parse_custom_application_catalog_refs_json "${SUBSTRATE_REF}")"
     SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY="$(application_catalog_source_display_from_json "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}")"
     return 0
   fi
 
-  if [[ -n "${AIRGAP_CHANNEL}" ]]; then
-    SELECTED_APPLICATION_CATALOG_SOURCES_JSON="$(resolve_application_catalog_sources_from_ids "${AIRGAP_CHANNEL}")"
+  if [[ -n "${SUBSTRATE_CHANNEL}" ]]; then
+    SELECTED_APPLICATION_CATALOG_SOURCES_JSON="$(resolve_application_catalog_sources_from_ids "${SUBSTRATE_CHANNEL}")"
     SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY="$(application_catalog_source_display_from_json "${SELECTED_APPLICATION_CATALOG_SOURCES_JSON}")"
     return 0
   fi
@@ -2590,8 +2545,8 @@ load_application_catalog_metadata() {
   local catalog_file="${1:-${APPLICATION_CATALOG_FILE:-}}"
 
   APPLICATION_CATALOG_PRESENT=0
-  if [[ -z "${catalog_file}" && -n "${AIRGAP_EXTRACT_DIR:-}" ]]; then
-    catalog_file="${AIRGAP_EXTRACT_DIR}/platform/catalog.json"
+  if [[ -z "${catalog_file}" && -n "${SUBSTRATE_EXTRACT_DIR:-}" ]]; then
+    catalog_file="${SUBSTRATE_EXTRACT_DIR}/platform/catalog.json"
   fi
   APPLICATION_CATALOG_FILE="${catalog_file}"
   [[ -f "${APPLICATION_CATALOG_FILE}" ]] || return 0
@@ -3010,15 +2965,15 @@ pull_and_save_image_tar() {
 
   case "${cli_base}" in
     docker|nerdctl)
-      ${CONTAINER_CLI} pull --platform="linux/${EXPECTED_AIRGAP_ARCH}" "${image_ref}"
+      ${CONTAINER_CLI} pull --platform="linux/${EXPECTED_SUBSTRATE_ARCH}" "${image_ref}"
       if [[ "${cli_base}" == "nerdctl" ]]; then
-        ${CONTAINER_CLI} save --platform="linux/${EXPECTED_AIRGAP_ARCH}" -o "${tar_path}" "${image_ref}"
+        ${CONTAINER_CLI} save --platform="linux/${EXPECTED_SUBSTRATE_ARCH}" -o "${tar_path}" "${image_ref}"
       else
         ${CONTAINER_CLI} save -o "${tar_path}" "${image_ref}"
       fi
       ;;
     podman)
-      ${CONTAINER_CLI} pull --arch="${EXPECTED_AIRGAP_ARCH}" --os=linux "${image_ref}"
+      ${CONTAINER_CLI} pull --arch="${EXPECTED_SUBSTRATE_ARCH}" --os=linux "${image_ref}"
       ${CONTAINER_CLI} save -o "${tar_path}" "${image_ref}"
       ;;
     *)
@@ -3040,9 +2995,9 @@ resolve_application_catalog_bundle_ref_from_catalog() {
   catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
   [[ -n "${catalog_tsv}" && -f "${catalog_tsv}" ]] || die "application catalog index missing catalog.tsv: ${catalog_ref}"
 
-  resolved_ref="$(select_airgap_ref_from_catalog "${catalog_tsv}" "${release_channel}" "${PLATFORM_CONTRACT_DIGEST}" "${EXPECTED_AIRGAP_ARCH}" || true)"
+  resolved_ref="$(select_substrate_ref_from_catalog "${catalog_tsv}" "${release_channel}" "${EXPECTED_SUBSTRATE_ARCH}" || true)"
   is_pinned_ref "${resolved_ref}" \
-    || die "application catalog index ${catalog_ref} had no ${release_channel} row for arch=${EXPECTED_AIRGAP_ARCH} contract=${PLATFORM_CONTRACT_DIGEST}"
+    || die "application catalog index ${catalog_ref} had no ${release_channel} row for arch=${EXPECTED_SUBSTRATE_ARCH}"
   printf '%s\n' "${resolved_ref}"
 }
 
@@ -3089,8 +3044,6 @@ prepare_merged_application_catalog() {
   local bundle_sha=""
   local pinned_ref=""
   local pinned_digest=""
-  local manifest_contract_digest=""
-  local contract_hint=""
   local suggested_index_ref=""
   local catalog_dump=""
   local -a catalog_fields=()
@@ -3145,36 +3098,6 @@ prepare_merged_application_catalog() {
     [[ -f "${extracted_dir}/images.lock.json" ]] || die "application catalog bundle missing images.lock.json: ${pinned_ref}"
     [[ -f "${extracted_dir}/manifest.env" ]] || die "application catalog bundle missing manifest.env: ${pinned_ref}"
     [[ -f "${extracted_dir}/profile.env" ]] || die "application catalog bundle missing profile.env: ${pinned_ref}"
-
-    manifest_contract_digest="$(
-      python3 - <<'PY' "${extracted_dir}/manifest.env"
-import re
-import sys
-from pathlib import Path
-
-digest = ""
-for raw_line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
-    line = raw_line.strip()
-    if not line or line.startswith("#"):
-        continue
-    key, value = line.split("=", 1)
-    if key == "OURBOX_PLATFORM_CONTRACT_DIGEST":
-        digest = value.strip()
-        break
-
-if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
-    raise SystemExit("application catalog bundle manifest must declare a valid OURBOX_PLATFORM_CONTRACT_DIGEST")
-
-print(digest)
-PY
-    )" || die "failed to parse application catalog bundle manifest metadata: ${pinned_ref}"
-    contract_hint=""
-    if [[ -n "${requested_artifact_ref}" ]] && ! is_pinned_ref "${requested_artifact_ref}"; then
-      suggested_index_ref="$(ref_repo_base "${requested_artifact_ref}"):catalog-${EXPECTED_AIRGAP_ARCH}"
-      contract_hint=" If you want automatic contract-compatible selection, pass the catalog index ref ${suggested_index_ref} instead."
-    fi
-    [[ "${manifest_contract_digest}" == "${PLATFORM_CONTRACT_DIGEST}" ]] \
-      || die "application catalog bundle contract digest mismatch for ${pinned_ref}: expected ${PLATFORM_CONTRACT_DIGEST}, got ${manifest_contract_digest}.${contract_hint}"
 
     catalog_dump="$(
       python3 - <<'PY' "${extracted_dir}/catalog.json"
@@ -3315,43 +3238,43 @@ for conflict in conflicts:
 PY
 }
 
-stage_selected_airgap_bundle() {
-  local airgap_cache_dir=""
+stage_selected_substrate_bundle() {
+  local substrate_cache_dir=""
   local pulled_bundle=""
   local pulled_bundle_sha=""
   local expected_bundle_sha=""
   local actual_bundle_sha=""
-  local extracted_dir="${TMP_ROOT}/selected-airgap-bundle"
+  local extracted_dir="${TMP_ROOT}/selected-substrate-bundle"
   local manifest_dump=""
   local -a manifest_fields=()
 
-  cache_pull_oci_artifact "${SELECTED_AIRGAP_REF}" "${CACHE_REUSE_ENABLED}" airgap_cache_dir
-  SELECTED_AIRGAP_DIGEST="${OURBOX_CACHE_LAST_DIGEST}"
-  SELECTED_AIRGAP_PINNED_REF="${OURBOX_CACHE_LAST_PINNED_REF}"
-  log_resolved_artifact_ref "application bundle" "${SELECTED_AIRGAP_REF}" "${SELECTED_AIRGAP_PINNED_REF}"
+  cache_pull_oci_artifact "${SELECTED_SUBSTRATE_REF}" "${CACHE_REUSE_ENABLED}" substrate_cache_dir
+  SELECTED_SUBSTRATE_DIGEST="${OURBOX_CACHE_LAST_DIGEST}"
+  SELECTED_SUBSTRATE_PINNED_REF="${OURBOX_CACHE_LAST_PINNED_REF}"
+  log_resolved_artifact_ref "application bundle" "${SELECTED_SUBSTRATE_REF}" "${SELECTED_SUBSTRATE_PINNED_REF}"
 
-  pulled_bundle="$(find_pulled_file "${airgap_cache_dir}" "ourbox-substrate.tar.gz")"
-  [[ -f "${pulled_bundle}" ]] || die "cached application bundle missing ourbox-substrate.tar.gz: ${airgap_cache_dir}"
+  pulled_bundle="$(find_pulled_file "${substrate_cache_dir}" "ourbox-substrate.tar.gz")"
+  [[ -f "${pulled_bundle}" ]] || die "cached application bundle missing ourbox-substrate.tar.gz: ${substrate_cache_dir}"
   pulled_bundle_sha="${pulled_bundle}.sha256"
   if [[ -f "${pulled_bundle_sha}" ]]; then
     expected_bundle_sha="$(awk 'NF>=1 {print $1; exit}' "${pulled_bundle_sha}")"
     expected_bundle_sha="${expected_bundle_sha,,}"
     [[ "${expected_bundle_sha}" =~ ^[0-9a-f]{64}$ ]] || die "invalid sha256 in ${pulled_bundle_sha}"
     actual_bundle_sha="$(sha256_file "${pulled_bundle}")"
-    [[ "${actual_bundle_sha}" == "${expected_bundle_sha}" ]] || die "application bundle sha mismatch for ${SELECTED_AIRGAP_PINNED_REF}"
+    [[ "${actual_bundle_sha}" == "${expected_bundle_sha}" ]] || die "application bundle sha mismatch for ${SELECTED_SUBSTRATE_PINNED_REF}"
   fi
 
   rm -rf "${extracted_dir}"
   mkdir -p "${extracted_dir}"
   tar -xzf "${pulled_bundle}" -C "${extracted_dir}"
-  [[ -f "${extracted_dir}/manifest.env" ]] || die "application bundle tarball missing manifest.env: ${SELECTED_AIRGAP_PINNED_REF}"
-  [[ -x "${extracted_dir}/k3s/k3s" ]] || die "application bundle tarball missing k3s/k3s: ${SELECTED_AIRGAP_PINNED_REF}"
-  [[ -f "${extracted_dir}/k3s/k3s-airgap-images-${EXPECTED_AIRGAP_ARCH}.tar" ]] \
-    || die "application bundle tarball missing k3s/k3s-airgap-images-${EXPECTED_AIRGAP_ARCH}.tar: ${SELECTED_AIRGAP_PINNED_REF}"
-  [[ -f "${extracted_dir}/platform/images.lock.json" ]] || die "application bundle tarball missing platform/images.lock.json: ${SELECTED_AIRGAP_PINNED_REF}"
-  [[ -f "${extracted_dir}/platform/profile.env" ]] || die "application bundle tarball missing platform/profile.env: ${SELECTED_AIRGAP_PINNED_REF}"
+  [[ -f "${extracted_dir}/manifest.env" ]] || die "application bundle tarball missing manifest.env: ${SELECTED_SUBSTRATE_PINNED_REF}"
+  [[ -x "${extracted_dir}/k3s/k3s" ]] || die "application bundle tarball missing k3s/k3s: ${SELECTED_SUBSTRATE_PINNED_REF}"
+  [[ -f "${extracted_dir}/k3s/k3s-images-${EXPECTED_SUBSTRATE_ARCH}.tar" ]] \
+    || die "application bundle tarball missing k3s/k3s-images-${EXPECTED_SUBSTRATE_ARCH}.tar: ${SELECTED_SUBSTRATE_PINNED_REF}"
+  [[ -f "${extracted_dir}/platform/images.lock.json" ]] || die "application bundle tarball missing platform/images.lock.json: ${SELECTED_SUBSTRATE_PINNED_REF}"
+  [[ -f "${extracted_dir}/platform/profile.env" ]] || die "application bundle tarball missing platform/profile.env: ${SELECTED_SUBSTRATE_PINNED_REF}"
   find "${extracted_dir}/platform/images" -maxdepth 1 -type f -name '*.tar' | grep -q . \
-    || die "application bundle tarball missing platform image tar payloads: ${SELECTED_AIRGAP_PINNED_REF}"
+    || die "application bundle tarball missing platform image tar payloads: ${SELECTED_SUBSTRATE_PINNED_REF}"
 
   manifest_dump="$(
     python3 "${VENDORED_METADATA_PARSER}" "${extracted_dir}/manifest.env" \
@@ -3359,8 +3282,6 @@ stage_selected_airgap_bundle() {
       --allow OURBOX_SUBSTRATE_REVISION \
       --allow OURBOX_SUBSTRATE_VERSION \
       --allow OURBOX_SUBSTRATE_CREATED \
-      --allow OURBOX_PLATFORM_CONTRACT_REF \
-      --allow OURBOX_PLATFORM_CONTRACT_DIGEST \
       --allow OURBOX_SUBSTRATE_ARCH \
       --allow K3S_VERSION \
       --allow OURBOX_PLATFORM_PROFILE \
@@ -3370,7 +3291,6 @@ stage_selected_airgap_bundle() {
       --require OURBOX_SUBSTRATE_REVISION \
       --require OURBOX_SUBSTRATE_VERSION \
       --require OURBOX_SUBSTRATE_CREATED \
-      --require OURBOX_PLATFORM_CONTRACT_DIGEST \
       --require OURBOX_SUBSTRATE_ARCH \
       --require K3S_VERSION \
       --require OURBOX_PLATFORM_PROFILE \
@@ -3380,42 +3300,36 @@ stage_selected_airgap_bundle() {
       --print OURBOX_SUBSTRATE_REVISION \
       --print OURBOX_SUBSTRATE_VERSION \
       --print OURBOX_SUBSTRATE_CREATED \
-      --print OURBOX_PLATFORM_CONTRACT_REF \
-      --print OURBOX_PLATFORM_CONTRACT_DIGEST \
       --print OURBOX_SUBSTRATE_ARCH \
       --print K3S_VERSION \
       --print OURBOX_PLATFORM_PROFILE \
       --print OURBOX_PLATFORM_IMAGES_LOCK_SHA256
   )"
   mapfile -t manifest_fields <<<"${manifest_dump}"
-  [[ "${#manifest_fields[@]}" -eq 10 ]] || die "failed to parse application bundle manifest metadata: ${SELECTED_AIRGAP_PINNED_REF}"
+  [[ "${#manifest_fields[@]}" -eq 8 ]] || die "failed to parse application bundle manifest metadata: ${SELECTED_SUBSTRATE_PINNED_REF}"
 
-  [[ "${manifest_fields[5]}" == "${PLATFORM_CONTRACT_DIGEST}" ]] \
-    || die "application bundle contract digest mismatch for ${SELECTED_AIRGAP_PINNED_REF}: expected ${PLATFORM_CONTRACT_DIGEST}, got ${manifest_fields[5]}"
-  [[ "${manifest_fields[6]}" == "${EXPECTED_AIRGAP_ARCH}" ]] \
-    || die "application bundle arch mismatch for ${SELECTED_AIRGAP_PINNED_REF}: expected ${EXPECTED_AIRGAP_ARCH}, got ${manifest_fields[6]}"
+  [[ "${manifest_fields[4]}" == "${EXPECTED_SUBSTRATE_ARCH}" ]] \
+    || die "application bundle arch mismatch for ${SELECTED_SUBSTRATE_PINNED_REF}: expected ${EXPECTED_SUBSTRATE_ARCH}, got ${manifest_fields[4]}"
 
-  cp -f "${pulled_bundle}" "${AIRGAP_STAGE_DIR}/ourbox-substrate.tar.gz"
-  printf '%s  %s\n' "$(sha256_file "${AIRGAP_STAGE_DIR}/ourbox-substrate.tar.gz")" "ourbox-substrate.tar.gz" \
-    > "${AIRGAP_STAGE_DIR}/ourbox-substrate.tar.gz.sha256"
-  cp -f "${extracted_dir}/manifest.env" "${AIRGAP_STAGE_DIR}/manifest.env"
-  printf '%s\n' "${SELECTED_AIRGAP_PINNED_REF}" > "${AIRGAP_STAGE_DIR}/artifact.ref"
+  cp -f "${pulled_bundle}" "${SUBSTRATE_STAGE_DIR}/ourbox-substrate.tar.gz"
+  printf '%s  %s\n' "$(sha256_file "${SUBSTRATE_STAGE_DIR}/ourbox-substrate.tar.gz")" "ourbox-substrate.tar.gz" \
+    > "${SUBSTRATE_STAGE_DIR}/ourbox-substrate.tar.gz.sha256"
+  cp -f "${extracted_dir}/manifest.env" "${SUBSTRATE_STAGE_DIR}/manifest.env"
+  printf '%s\n' "${SELECTED_SUBSTRATE_PINNED_REF}" > "${SUBSTRATE_STAGE_DIR}/artifact.ref"
 
-  SELECTED_AIRGAP_SOURCE="${manifest_fields[0]}"
-  SELECTED_AIRGAP_REVISION="${manifest_fields[1]}"
-  SELECTED_AIRGAP_VERSION="${manifest_fields[2]}"
-  SELECTED_AIRGAP_CREATED="${manifest_fields[3]}"
-  SELECTED_SUBSTRATE_CONTRACT_REF="${manifest_fields[4]}"
-  SELECTED_SUBSTRATE_CONTRACT_DIGEST="${manifest_fields[5]}"
-  SELECTED_AIRGAP_ARCH="${manifest_fields[6]}"
-  SELECTED_AIRGAP_K3S_VERSION="${manifest_fields[7]}"
-  SELECTED_AIRGAP_PROFILE="${manifest_fields[8]}"
-  SELECTED_AIRGAP_IMAGES_LOCK_SHA256="${manifest_fields[9]}"
+  SELECTED_SUBSTRATE_SOURCE="${manifest_fields[0]}"
+  SELECTED_SUBSTRATE_REVISION="${manifest_fields[1]}"
+  SELECTED_SUBSTRATE_VERSION="${manifest_fields[2]}"
+  SELECTED_SUBSTRATE_CREATED="${manifest_fields[3]}"
+  SELECTED_SUBSTRATE_ARCH="${manifest_fields[4]}"
+  SELECTED_SUBSTRATE_K3S_VERSION="${manifest_fields[5]}"
+  SELECTED_SUBSTRATE_PROFILE="${manifest_fields[6]}"
+  SELECTED_SUBSTRATE_IMAGES_LOCK_SHA256="${manifest_fields[7]}"
 }
 
 synthesize_selected_application_bundle() {
   local extracted_payload_root="${TMP_ROOT}/os-payload-extract"
-  local base_airgap_dir="${extracted_payload_root}/airgap"
+  local base_substrate_dir="${extracted_payload_root}/substrate"
   local synthetic_root="${TMP_ROOT}/selected-application-bundle"
   local synthetic_images_dir="${synthetic_root}/platform/images"
   local image_dump=""
@@ -3431,15 +3345,15 @@ synthesize_selected_application_bundle() {
   rm -rf "${extracted_payload_root}" "${synthetic_root}"
   mkdir -p "${extracted_payload_root}" "${synthetic_images_dir}"
 
-  if ! tar -xzf "${OS_PAYLOAD}" -C "${extracted_payload_root}" airgap 2>/dev/null; then
-    tar -xzf "${OS_PAYLOAD}" -C "${extracted_payload_root}" ./airgap \
-      || die "selected OS payload did not contain a baked airgap directory"
+  if ! tar -xzf "${OS_PAYLOAD}" -C "${extracted_payload_root}" substrate 2>/dev/null; then
+    tar -xzf "${OS_PAYLOAD}" -C "${extracted_payload_root}" ./substrate \
+      || die "selected OS payload did not contain a baked substrate directory"
   fi
-  [[ -d "${base_airgap_dir}" ]] || die "selected OS payload did not contain a baked airgap directory"
-  [[ -f "${base_airgap_dir}/manifest.env" ]] || die "selected OS payload baked airgap bundle is missing manifest.env"
-  [[ -d "${base_airgap_dir}/platform/images" ]] || die "selected OS payload baked airgap bundle is missing platform/images"
+  [[ -d "${base_substrate_dir}" ]] || die "selected OS payload did not contain a baked substrate directory"
+  [[ -f "${base_substrate_dir}/manifest.env" ]] || die "selected OS payload baked substrate bundle is missing manifest.env"
+  [[ -d "${base_substrate_dir}/platform/images" ]] || die "selected OS payload baked substrate bundle is missing platform/images"
 
-  cp -a "${base_airgap_dir}/." "${synthetic_root}/"
+  cp -a "${base_substrate_dir}/." "${synthetic_root}/"
   rm -rf "${synthetic_images_dir}"
   mkdir -p "${synthetic_images_dir}"
 
@@ -3471,7 +3385,7 @@ PY
   while IFS=$'\t' read -r image_name image_ref; do
     [[ -n "${image_name}" && -n "${image_ref}" ]] || continue
     target_tar="${synthetic_images_dir}/$(image_tar_name "${image_ref}")"
-    baked_tar="${base_airgap_dir}/platform/images/$(image_tar_name "${image_ref}")"
+    baked_tar="${base_substrate_dir}/platform/images/$(image_tar_name "${image_ref}")"
 
     if [[ -f "${baked_tar}" ]]; then
       cp -f "${baked_tar}" "${target_tar}"
@@ -3490,40 +3404,36 @@ OURBOX_SUBSTRATE_SOURCE=https://github.com/techofourown/sw-ourbox-installer
 OURBOX_SUBSTRATE_REVISION=${COMPOSER_REVISION}
 OURBOX_SUBSTRATE_VERSION=${bundle_version}
 OURBOX_SUBSTRATE_CREATED=${COMPOSED_AT}
-OURBOX_PLATFORM_CONTRACT_REF=${PLATFORM_CONTRACT_SOURCE}
-OURBOX_PLATFORM_CONTRACT_DIGEST=${PLATFORM_CONTRACT_DIGEST}
-OURBOX_SUBSTRATE_ARCH=${EXPECTED_AIRGAP_ARCH}
-K3S_VERSION=${BAKED_AIRGAP_K3S_VERSION}
-OURBOX_PLATFORM_PROFILE=${BAKED_AIRGAP_PROFILE}
+OURBOX_SUBSTRATE_ARCH=${EXPECTED_SUBSTRATE_ARCH}
+K3S_VERSION=${BAKED_SUBSTRATE_K3S_VERSION}
+OURBOX_PLATFORM_PROFILE=${BAKED_SUBSTRATE_PROFILE}
 OURBOX_PLATFORM_IMAGES_LOCK_PATH=platform/images.lock.json
 OURBOX_PLATFORM_IMAGES_LOCK_SHA256=${merged_images_lock_sha}
 EOF_MANIFEST
 
-  tar -C "${synthetic_root}" -czf "${AIRGAP_STAGE_DIR}/ourbox-substrate.tar.gz" k3s platform manifest.env
-  synthetic_sha="$(sha256_file "${AIRGAP_STAGE_DIR}/ourbox-substrate.tar.gz")"
-  # Keep the artifact ref digest-pinned so the mission contract and downstream
+  tar -C "${synthetic_root}" -czf "${SUBSTRATE_STAGE_DIR}/ourbox-substrate.tar.gz" k3s platform manifest.env
+  synthetic_sha="$(sha256_file "${SUBSTRATE_STAGE_DIR}/ourbox-substrate.tar.gz")"
+  # Keep the artifact ref digest-pinned so the mission manifest and downstream
   # validator can treat host-composed bundles like the rest of the stack.
   bundle_ref="host-composed.local/application-catalog/${APPLICATION_CATALOG_ID}@sha256:${synthetic_sha}"
-  printf '%s  %s\n' "${synthetic_sha}" "ourbox-substrate.tar.gz" > "${AIRGAP_STAGE_DIR}/ourbox-substrate.tar.gz.sha256"
-  cp -f "${synthetic_root}/manifest.env" "${AIRGAP_STAGE_DIR}/manifest.env"
-  printf '%s\n' "${bundle_ref}" > "${AIRGAP_STAGE_DIR}/artifact.ref"
+  printf '%s  %s\n' "${synthetic_sha}" "ourbox-substrate.tar.gz" > "${SUBSTRATE_STAGE_DIR}/ourbox-substrate.tar.gz.sha256"
+  cp -f "${synthetic_root}/manifest.env" "${SUBSTRATE_STAGE_DIR}/manifest.env"
+  printf '%s\n' "${bundle_ref}" > "${SUBSTRATE_STAGE_DIR}/artifact.ref"
 
-  SELECTED_AIRGAP_PINNED_REF="${bundle_ref}"
-  SELECTED_AIRGAP_DIGEST="sha256:${synthetic_sha}"
-  SELECTED_AIRGAP_SELECTION_MODE="host-selected"
-  SELECTED_AIRGAP_SELECTION_SOURCE="application-catalogs"
-  SELECTED_AIRGAP_RELEASE_CHANNEL=""
-  SELECTED_AIRGAP_SOURCE="https://github.com/techofourown/sw-ourbox-installer"
-  SELECTED_AIRGAP_REVISION="${COMPOSER_REVISION}"
-  SELECTED_AIRGAP_VERSION="${bundle_version}"
-  SELECTED_AIRGAP_CREATED="${COMPOSED_AT}"
-  SELECTED_SUBSTRATE_CONTRACT_REF="${PLATFORM_CONTRACT_SOURCE}"
-  SELECTED_SUBSTRATE_CONTRACT_DIGEST="${PLATFORM_CONTRACT_DIGEST}"
-  SELECTED_AIRGAP_ARCH="${EXPECTED_AIRGAP_ARCH}"
-  SELECTED_AIRGAP_K3S_VERSION="${BAKED_AIRGAP_K3S_VERSION}"
-  SELECTED_AIRGAP_PROFILE="${BAKED_AIRGAP_PROFILE}"
-  SELECTED_AIRGAP_IMAGES_LOCK_PATH="platform/images.lock.json"
-  SELECTED_AIRGAP_IMAGES_LOCK_SHA256="${merged_images_lock_sha}"
+  SELECTED_SUBSTRATE_PINNED_REF="${bundle_ref}"
+  SELECTED_SUBSTRATE_DIGEST="sha256:${synthetic_sha}"
+  SELECTED_SUBSTRATE_SELECTION_MODE="host-selected"
+  SELECTED_SUBSTRATE_SELECTION_SOURCE="application-catalogs"
+  SELECTED_SUBSTRATE_RELEASE_CHANNEL=""
+  SELECTED_SUBSTRATE_SOURCE="https://github.com/techofourown/sw-ourbox-installer"
+  SELECTED_SUBSTRATE_REVISION="${COMPOSER_REVISION}"
+  SELECTED_SUBSTRATE_VERSION="${bundle_version}"
+  SELECTED_SUBSTRATE_CREATED="${COMPOSED_AT}"
+  SELECTED_SUBSTRATE_ARCH="${EXPECTED_SUBSTRATE_ARCH}"
+  SELECTED_SUBSTRATE_K3S_VERSION="${BAKED_SUBSTRATE_K3S_VERSION}"
+  SELECTED_SUBSTRATE_PROFILE="${BAKED_SUBSTRATE_PROFILE}"
+  SELECTED_SUBSTRATE_IMAGES_LOCK_PATH="platform/images.lock.json"
+  SELECTED_SUBSTRATE_IMAGES_LOCK_SHA256="${merged_images_lock_sha}"
 }
 
 initial_cache_refs=()
@@ -3570,10 +3480,6 @@ os_meta_dump="$(
     --allow OURBOX_RECIPE_GIT_HASH \
     --allow BUILD_TS \
     --allow GIT_SHA \
-    --allow OURBOX_PLATFORM_CONTRACT_SOURCE \
-    --allow OURBOX_PLATFORM_CONTRACT_REVISION \
-    --allow OURBOX_PLATFORM_CONTRACT_VERSION \
-    --allow OURBOX_PLATFORM_CONTRACT_DIGEST \
     --allow OURBOX_SUBSTRATE_REF \
     --allow OURBOX_SUBSTRATE_DIGEST \
     --allow OURBOX_SUBSTRATE_SOURCE \
@@ -3590,13 +3496,7 @@ os_meta_dump="$(
     --allow GITHUB_RUN_ID \
     --allow GITHUB_RUN_ATTEMPT \
     --require OS_ARTIFACT_TYPE \
-    --require OURBOX_PLATFORM_CONTRACT_DIGEST \
     --print OS_ARTIFACT_TYPE \
-    --print OURBOX_PLATFORM_CONTRACT_DIGEST \
-    --print OURBOX_PLATFORM_CONTRACT_SOURCE \
-    --print OURBOX_PLATFORM_CONTRACT_REVISION \
-    --print OURBOX_PLATFORM_CONTRACT_VERSION \
-    --print OURBOX_PLATFORM_CONTRACT_CREATED \
     --print OURBOX_SUBSTRATE_REF \
     --print OURBOX_SUBSTRATE_DIGEST \
     --print OURBOX_SUBSTRATE_SOURCE \
@@ -3613,31 +3513,25 @@ os_meta_dump="$(
     --print OURBOX_SKU
 )"
 mapfile -t os_meta_fields <<<"${os_meta_dump}"
-[[ "${#os_meta_fields[@]}" -eq 20 ]] || die "failed to parse ${OS_META_ENV}"
+[[ "${#os_meta_fields[@]}" -eq 15 ]] || die "failed to parse ${OS_META_ENV}"
 
 OS_ARTIFACT_TYPE="${os_meta_fields[0]}"
-PLATFORM_CONTRACT_DIGEST="${os_meta_fields[1]}"
-PLATFORM_CONTRACT_SOURCE="${os_meta_fields[2]}"
-PLATFORM_CONTRACT_REVISION="${os_meta_fields[3]}"
-PLATFORM_CONTRACT_VERSION="${os_meta_fields[4]}"
-PLATFORM_CONTRACT_CREATED="${os_meta_fields[5]}"
-BAKED_AIRGAP_REF="${os_meta_fields[6]}"
-BAKED_AIRGAP_DIGEST="${os_meta_fields[7]}"
-BAKED_AIRGAP_SOURCE="${os_meta_fields[8]}"
-BAKED_AIRGAP_REVISION="${os_meta_fields[9]}"
-BAKED_AIRGAP_VERSION="${os_meta_fields[10]}"
-BAKED_AIRGAP_CREATED="${os_meta_fields[11]}"
-BAKED_AIRGAP_ARCH="${os_meta_fields[12]}"
-BAKED_AIRGAP_PROFILE="${os_meta_fields[13]}"
-BAKED_AIRGAP_K3S_VERSION="${os_meta_fields[14]}"
-BAKED_AIRGAP_IMAGES_LOCK_SHA256="${os_meta_fields[15]}"
-OURBOX_VERSION="${os_meta_fields[16]}"
-OURBOX_VARIANT="${os_meta_fields[17]}"
-OURBOX_TARGET="${os_meta_fields[18]}"
-OURBOX_SKU="${os_meta_fields[19]}"
+BAKED_SUBSTRATE_REF="${os_meta_fields[1]}"
+BAKED_SUBSTRATE_DIGEST="${os_meta_fields[2]}"
+BAKED_SUBSTRATE_SOURCE="${os_meta_fields[3]}"
+BAKED_SUBSTRATE_REVISION="${os_meta_fields[4]}"
+BAKED_SUBSTRATE_VERSION="${os_meta_fields[5]}"
+BAKED_SUBSTRATE_CREATED="${os_meta_fields[6]}"
+BAKED_SUBSTRATE_ARCH="${os_meta_fields[7]}"
+BAKED_SUBSTRATE_PROFILE="${os_meta_fields[8]}"
+BAKED_SUBSTRATE_K3S_VERSION="${os_meta_fields[9]}"
+BAKED_SUBSTRATE_IMAGES_LOCK_SHA256="${os_meta_fields[10]}"
+OURBOX_VERSION="${os_meta_fields[11]}"
+OURBOX_VARIANT="${os_meta_fields[12]}"
+OURBOX_TARGET="${os_meta_fields[13]}"
+OURBOX_SKU="${os_meta_fields[14]}"
 
 [[ "${OS_ARTIFACT_TYPE}" == "${EXPECTED_OS_ARTIFACT_TYPE}" ]] || die "unexpected OS artifact type in ${OS_META_ENV}: ${OS_ARTIFACT_TYPE}"
-is_sha256_digest "${PLATFORM_CONTRACT_DIGEST}" || die "invalid platform contract digest in ${OS_META_ENV}"
 
 APPLICATION_SOURCE_RESOLUTIONS_JSON="$(parse_application_source_resolutions_spec "${APP_SOURCE_RESOLUTIONS_SPEC}")"
 SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL="$(selected_installer_release_channel)"
@@ -3659,8 +3553,8 @@ if [[ "${TARGET_SUPPORTS_APPLICATION_CATALOGS}" == "1" ]]; then
   prepare_merged_application_catalog "${SELECTED_APPLICATION_SELECTION_MODE}" "${SELECTED_APPLICATION_IDS_JSON}"
   log_application_catalog_merge_summary
 else
-  determine_airgap_ref "${PLATFORM_CONTRACT_DIGEST}"
-  maybe_confirm_cache_reuse "the selected mission artifacts" "${SELECTED_OS_REF}" "${SELECTED_AIRGAP_REF}" "${SELECTED_INSTALLER_SUBSTRATE_REF}"
+  determine_substrate_ref
+  maybe_confirm_cache_reuse "the selected mission artifacts" "${SELECTED_OS_REF}" "${SELECTED_SUBSTRATE_REF}" "${SELECTED_INSTALLER_SUBSTRATE_REF}"
 fi
 
 determine_installed_target_ssh_key
@@ -3684,8 +3578,8 @@ COMPOSE_ID="${TARGET}-${OURBOX_VERSION}-${COMPOSED_AT//[:]/}"
 STAGING_OUTPUT_DIR="${TMP_ROOT}/prepared-output"
 MISSION_DIR="${STAGING_OUTPUT_DIR}/mission"
 OS_STAGE_DIR="${MISSION_DIR}/artifacts/os"
-AIRGAP_STAGE_DIR="${MISSION_DIR}/artifacts/airgap"
-mkdir -p "${OS_STAGE_DIR}" "${AIRGAP_STAGE_DIR}"
+SUBSTRATE_STAGE_DIR="${MISSION_DIR}/artifacts/substrate"
+mkdir -p "${OS_STAGE_DIR}" "${SUBSTRATE_STAGE_DIR}"
 
 cp -f "${OS_PAYLOAD}" "${OS_STAGE_DIR}/os-payload.tar.gz"
 cp -f "${OS_PAYLOAD_SHA_FILE}" "${OS_STAGE_DIR}/os-payload.tar.gz.sha256"
@@ -3695,11 +3589,11 @@ printf '%s\n' "${SELECTED_OS_PINNED_REF}" > "${OS_STAGE_DIR}/artifact.ref"
 if [[ "${TARGET_SUPPORTS_APPLICATION_CATALOGS}" == "1" ]]; then
   synthesize_selected_application_bundle
   if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
-    cp -f "${MERGED_APPLICATION_CATALOG_FILE}" "${AIRGAP_STAGE_DIR}/catalog.json"
-    cp -f "${MERGED_SELECTED_APPLICATIONS_FILE}" "${AIRGAP_STAGE_DIR}/selected-apps.json"
+    cp -f "${MERGED_APPLICATION_CATALOG_FILE}" "${SUBSTRATE_STAGE_DIR}/catalog.json"
+    cp -f "${MERGED_SELECTED_APPLICATIONS_FILE}" "${SUBSTRATE_STAGE_DIR}/selected-apps.json"
   fi
 else
-  stage_selected_airgap_bundle
+  stage_selected_substrate_bundle
 fi
 stage_selected_installed_target_ssh_artifacts "${MISSION_DIR}"
 validate_staged_installed_target_ssh_artifacts "${MISSION_DIR}"
@@ -3709,14 +3603,13 @@ fi
 
 export MISSION_DIR COMPOSE_ID COMPOSED_AT TARGET COMPOSER_REVISION ADAPTER_SOURCE_REPO ADAPTER_SOURCE_REVISION
 export VENDORED_ADAPTER_ROOT ADAPTER_RUNTIME_PROMPTS_JSON MINIMUM_MEDIA_SIZE_BYTES OUTPUT_KIND
-export SELECTED_INSTALLER_SUBSTRATE_REF SELECTED_OS_REF SELECTED_AIRGAP_REF
+export SELECTED_INSTALLER_SUBSTRATE_REF SELECTED_OS_REF SELECTED_SUBSTRATE_REF
 export SELECTED_INSTALLER_SUBSTRATE_PINNED_REF SELECTED_INSTALLER_SUBSTRATE_DIGEST SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL
-export SELECTED_OS_PINNED_REF SELECTED_OS_DIGEST EXPECTED_OS_ARTIFACT_TYPE PLATFORM_CONTRACT_DIGEST PLATFORM_CONTRACT_SOURCE
-export PLATFORM_CONTRACT_REVISION PLATFORM_CONTRACT_VERSION PLATFORM_CONTRACT_CREATED SELECTED_OS_SELECTION_SOURCE SELECTED_OS_RELEASE_CHANNEL
-export SELECTED_AIRGAP_PINNED_REF SELECTED_AIRGAP_DIGEST SELECTED_AIRGAP_SELECTION_MODE SELECTED_AIRGAP_SELECTION_SOURCE SELECTED_AIRGAP_RELEASE_CHANNEL
-export SELECTED_AIRGAP_SOURCE SELECTED_AIRGAP_REVISION SELECTED_AIRGAP_VERSION SELECTED_AIRGAP_CREATED SELECTED_SUBSTRATE_CONTRACT_REF
-export SELECTED_SUBSTRATE_CONTRACT_DIGEST SELECTED_AIRGAP_ARCH SELECTED_AIRGAP_PROFILE SELECTED_AIRGAP_K3S_VERSION
-export SELECTED_AIRGAP_IMAGES_LOCK_SHA256 MISSION_ONLY BAKED_AIRGAP_DIGEST
+export SELECTED_OS_PINNED_REF SELECTED_OS_DIGEST EXPECTED_OS_ARTIFACT_TYPE SELECTED_OS_SELECTION_SOURCE SELECTED_OS_RELEASE_CHANNEL
+export SELECTED_SUBSTRATE_PINNED_REF SELECTED_SUBSTRATE_DIGEST SELECTED_SUBSTRATE_SELECTION_MODE SELECTED_SUBSTRATE_SELECTION_SOURCE SELECTED_SUBSTRATE_RELEASE_CHANNEL
+export SELECTED_SUBSTRATE_SOURCE SELECTED_SUBSTRATE_REVISION SELECTED_SUBSTRATE_VERSION SELECTED_SUBSTRATE_CREATED
+export SELECTED_SUBSTRATE_ARCH SELECTED_SUBSTRATE_PROFILE SELECTED_SUBSTRATE_K3S_VERSION
+export SELECTED_SUBSTRATE_IMAGES_LOCK_SHA256 MISSION_ONLY BAKED_SUBSTRATE_DIGEST
 export APPLICATION_CATALOG_PRESENT APPLICATION_CATALOG_ID APPLICATION_CATALOG_NAME APPLICATION_CATALOG_DESCRIPTION
 export SELECTED_APPLICATION_SELECTION_MODE SELECTED_APPLICATION_IDS_JSON MERGED_APPLICATION_SUMMARY_FILE
 export SELECTED_INSTALLED_TARGET_SSH_MODE SELECTED_INSTALLED_TARGET_SSH_KEY_NAME
@@ -3727,7 +3620,7 @@ case "${TARGET}" in
     export MISSION_COMPOSE_STRATEGY="woodbox-fat-iso-with-host-selected-os-application-catalog-and-app-selection"
     ;;
   matchbox)
-    export MISSION_COMPOSE_STRATEGY="matchbox-fat-image-with-host-selected-os-and-airgap"
+    export MISSION_COMPOSE_STRATEGY="matchbox-fat-image-with-host-selected-os-and-substrate"
     ;;
   *)
     die "unsupported target during mission-manifest generation: ${TARGET}"
@@ -3743,10 +3636,10 @@ from pathlib import Path
 mission_dir = Path(os.environ["MISSION_DIR"])
 os_payload = mission_dir / "artifacts" / "os" / "os-payload.tar.gz"
 os_meta = mission_dir / "artifacts" / "os" / "os.meta.env"
-airgap_payload = mission_dir / "artifacts" / "airgap" / "ourbox-substrate.tar.gz"
-airgap_manifest = mission_dir / "artifacts" / "airgap" / "manifest.env"
-application_catalog = mission_dir / "artifacts" / "airgap" / "catalog.json"
-selected_apps = mission_dir / "artifacts" / "airgap" / "selected-apps.json"
+substrate_payload = mission_dir / "artifacts" / "substrate" / "ourbox-substrate.tar.gz"
+substrate_manifest = mission_dir / "artifacts" / "substrate" / "manifest.env"
+application_catalog = mission_dir / "artifacts" / "substrate" / "catalog.json"
+selected_apps = mission_dir / "artifacts" / "substrate" / "selected-apps.json"
 installed_target_ssh_key = mission_dir / "artifacts" / "installed-target-ssh" / "authorized-key.pub"
 
 def sha256(path: Path) -> str:
@@ -3774,9 +3667,9 @@ requested_os_ref = ""
 if os.environ["SELECTED_OS_SELECTION_SOURCE"] != "catalog":
     requested_os_ref = os.environ.get("SELECTED_OS_REF", "")
 
-requested_airgap_ref = ""
-if os.environ["SELECTED_AIRGAP_SELECTION_SOURCE"] not in {"catalog", "application-catalogs"}:
-    requested_airgap_ref = os.environ.get("SELECTED_AIRGAP_REF", "")
+requested_substrate_ref = ""
+if os.environ["SELECTED_SUBSTRATE_SELECTION_SOURCE"] not in {"catalog", "application-catalogs"}:
+    requested_substrate_ref = os.environ.get("SELECTED_SUBSTRATE_REF", "")
 
 requested_source_catalogs = []
 resolved_source_catalogs = []
@@ -3825,13 +3718,6 @@ manifest = {
       "compose_strategy": os.environ["MISSION_COMPOSE_STRATEGY"],
       "mission_only": os.environ["MISSION_ONLY"] == "1",
     },
-    "platform_contract": {
-        "digest": os.environ["PLATFORM_CONTRACT_DIGEST"],
-        "source": os.environ["PLATFORM_CONTRACT_SOURCE"],
-        "revision": os.environ["PLATFORM_CONTRACT_REVISION"],
-        "version": os.environ["PLATFORM_CONTRACT_VERSION"],
-        "created": os.environ["PLATFORM_CONTRACT_CREATED"],
-    },
     "requested": {
         "substrate": {
             "strategy": "published-installer-substrate",
@@ -3843,11 +3729,11 @@ manifest = {
             "release_channel": os.environ["SELECTED_OS_RELEASE_CHANNEL"],
             "requested_ref": requested_os_ref,
         },
-        "airgap": {
-            "selection_mode": os.environ["SELECTED_AIRGAP_SELECTION_MODE"],
-            "selection_source": os.environ["SELECTED_AIRGAP_SELECTION_SOURCE"],
-            "release_channel": os.environ["SELECTED_AIRGAP_RELEASE_CHANNEL"],
-            "requested_ref": requested_airgap_ref,
+        "selected_substrate": {
+            "selection_mode": os.environ["SELECTED_SUBSTRATE_SELECTION_MODE"],
+            "selection_source": os.environ["SELECTED_SUBSTRATE_SELECTION_SOURCE"],
+            "release_channel": os.environ["SELECTED_SUBSTRATE_RELEASE_CHANNEL"],
+            "requested_ref": requested_substrate_ref,
         },
     },
     "resolved": {
@@ -3864,7 +3750,6 @@ manifest = {
             "artifact_ref": os.environ["SELECTED_OS_PINNED_REF"],
             "artifact_digest": os.environ["SELECTED_OS_DIGEST"],
             "artifact_type": os.environ["EXPECTED_OS_ARTIFACT_TYPE"],
-            "platform_contract_digest": os.environ["PLATFORM_CONTRACT_DIGEST"],
             "payload": {
                 "relpath": os_payload.relative_to(mission_dir).as_posix(),
                 "sha256": sha256(os_payload),
@@ -3872,22 +3757,21 @@ manifest = {
             },
             "metadata_relpath": os_meta.relative_to(mission_dir).as_posix(),
         },
-        "airgap": {
-            "selection_mode": os.environ["SELECTED_AIRGAP_SELECTION_MODE"],
-            "selection_source": os.environ["SELECTED_AIRGAP_SELECTION_SOURCE"],
-            "release_channel": os.environ["SELECTED_AIRGAP_RELEASE_CHANNEL"],
-            "artifact_ref": os.environ["SELECTED_AIRGAP_PINNED_REF"],
-            "artifact_digest": os.environ["SELECTED_AIRGAP_DIGEST"],
-            "platform_contract_digest": os.environ["SELECTED_SUBSTRATE_CONTRACT_DIGEST"],
-            "arch": os.environ["SELECTED_AIRGAP_ARCH"],
-            "profile": os.environ["SELECTED_AIRGAP_PROFILE"],
-            "version": os.environ["SELECTED_AIRGAP_VERSION"],
-            "created": os.environ["SELECTED_AIRGAP_CREATED"],
-            "k3s_version": os.environ["SELECTED_AIRGAP_K3S_VERSION"],
-            "images_lock_sha256": os.environ["SELECTED_AIRGAP_IMAGES_LOCK_SHA256"],
-            "payload_relpath": airgap_payload.relative_to(mission_dir).as_posix(),
-            "manifest_relpath": airgap_manifest.relative_to(mission_dir).as_posix(),
-            "present_in_selected_os_payload": os.environ["SELECTED_AIRGAP_DIGEST"] == os.environ["BAKED_AIRGAP_DIGEST"],
+        "selected_substrate": {
+            "selection_mode": os.environ["SELECTED_SUBSTRATE_SELECTION_MODE"],
+            "selection_source": os.environ["SELECTED_SUBSTRATE_SELECTION_SOURCE"],
+            "release_channel": os.environ["SELECTED_SUBSTRATE_RELEASE_CHANNEL"],
+            "artifact_ref": os.environ["SELECTED_SUBSTRATE_PINNED_REF"],
+            "artifact_digest": os.environ["SELECTED_SUBSTRATE_DIGEST"],
+            "arch": os.environ["SELECTED_SUBSTRATE_ARCH"],
+            "profile": os.environ["SELECTED_SUBSTRATE_PROFILE"],
+            "version": os.environ["SELECTED_SUBSTRATE_VERSION"],
+            "created": os.environ["SELECTED_SUBSTRATE_CREATED"],
+            "k3s_version": os.environ["SELECTED_SUBSTRATE_K3S_VERSION"],
+            "images_lock_sha256": os.environ["SELECTED_SUBSTRATE_IMAGES_LOCK_SHA256"],
+            "payload_relpath": substrate_payload.relative_to(mission_dir).as_posix(),
+            "manifest_relpath": substrate_manifest.relative_to(mission_dir).as_posix(),
+            "present_in_selected_os_payload": os.environ["SELECTED_SUBSTRATE_DIGEST"] == os.environ["BAKED_SUBSTRATE_DIGEST"],
         },
     },
     "staged_files": staged_files,
@@ -3938,13 +3822,13 @@ bash "${VENDORED_ADAPTER_ROOT}/validate-media.sh" \
 log "Selected OS artifact: ${SELECTED_OS_PINNED_REF} (${SELECTED_OS_SELECTION_SOURCE})"
 if [[ "${TARGET_SUPPORTS_APPLICATION_CATALOGS}" == "1" ]]; then
   log "Selected application catalogs: ${SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY}"
-  log "Synthesized application bundle: ${SELECTED_AIRGAP_PINNED_REF} (${SELECTED_AIRGAP_SELECTION_SOURCE})"
+  log "Synthesized application bundle: ${SELECTED_SUBSTRATE_PINNED_REF} (${SELECTED_SUBSTRATE_SELECTION_SOURCE})"
 fi
 if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
   log "Selected applications: ${SELECTED_APPLICATION_IDS_DISPLAY} (${SELECTED_APPLICATION_SELECTION_MODE})"
 fi
 if [[ "${TARGET_SUPPORTS_APPLICATION_CATALOGS}" != "1" ]]; then
-  log "Selected application bundle: ${SELECTED_AIRGAP_PINNED_REF} (${SELECTED_AIRGAP_SELECTION_SOURCE})"
+  log "Selected application bundle: ${SELECTED_SUBSTRATE_PINNED_REF} (${SELECTED_SUBSTRATE_SELECTION_SOURCE})"
 fi
 log_installed_target_ssh_selection_summary
 log "Selected installer substrate: ${SELECTED_INSTALLER_SUBSTRATE_PINNED_REF} (${SELECTED_INSTALLER_SUBSTRATE_RELEASE_CHANNEL})"

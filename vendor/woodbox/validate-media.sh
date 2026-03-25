@@ -82,7 +82,7 @@ expected_meta = pathlib.Path(sys.argv[4]).resolve()
 strict_metadata_parser = pathlib.Path(sys.argv[5]).resolve()
 
 expected_type = adapter["expected_os_artifact_type"]
-expected_arch = adapter["expected_airgap_arch"]
+expected_arch = adapter["expected_substrate_arch"]
 sha256_re = re.compile(r"^sha256:[0-9a-f]{64}$")
 pinned_ref_re = re.compile(r"^[^\s]+@sha256:[0-9a-f]{64}$")
 plain_sha256_re = re.compile(r"^[0-9a-f]{64}$")
@@ -153,14 +153,14 @@ def validate_authorized_key_file(label: str, path: pathlib.Path) -> None:
 def normalize_tar_member_name(name: str) -> str:
     member_path = pathlib.PurePosixPath(name)
     if member_path.is_absolute():
-        raise SystemExit("mission selected_airgap.payload_relpath must not contain absolute paths")
+        raise SystemExit("mission selected_substrate.payload_relpath must not contain absolute paths")
     if ".." in member_path.parts:
-        raise SystemExit("mission selected_airgap.payload_relpath must not escape the extracted bundle root")
+        raise SystemExit("mission selected_substrate.payload_relpath must not escape the extracted bundle root")
     parts = [part for part in member_path.parts if part not in ("", ".")]
     return pathlib.PurePosixPath(*parts).as_posix() if parts else ""
 
 
-def validate_airgap_bundle(payload_path: pathlib.Path, manifest_path: pathlib.Path, required_contract: str) -> None:
+def validate_substrate_bundle(payload_path: pathlib.Path, manifest_path: pathlib.Path) -> None:
     try:
         with tarfile.open(payload_path, "r:gz") as archive:
             file_members: dict[str, tarfile.TarInfo] = {}
@@ -168,7 +168,7 @@ def validate_airgap_bundle(payload_path: pathlib.Path, manifest_path: pathlib.Pa
             for member in archive.getmembers():
                 normalized_name = normalize_tar_member_name(member.name)
                 if member.issym() or member.islnk():
-                    raise SystemExit("mission selected_airgap.payload_relpath must not contain symlinks or hard links")
+                    raise SystemExit("mission selected_substrate.payload_relpath must not contain symlinks or hard links")
                 if not normalized_name or member.isdir():
                     continue
                 file_members[normalized_name] = member
@@ -176,24 +176,24 @@ def validate_airgap_bundle(payload_path: pathlib.Path, manifest_path: pathlib.Pa
                     has_platform_image_tar = True
 
             required_files = {
-                "manifest.env": "mission selected_airgap.payload_relpath bundle missing manifest.env",
-                "k3s/k3s": "mission selected_airgap.payload_relpath bundle missing k3s binary",
-                f"k3s/k3s-airgap-images-{expected_arch}.tar": f"mission selected_airgap.payload_relpath bundle missing k3s airgap images tar for {expected_arch}",
-                "platform/images.lock.json": "mission selected_airgap.payload_relpath bundle missing platform/images.lock.json",
-                "platform/profile.env": "mission selected_airgap.payload_relpath bundle missing platform/profile.env",
+                "manifest.env": "mission selected_substrate.payload_relpath bundle missing manifest.env",
+                "k3s/k3s": "mission selected_substrate.payload_relpath bundle missing k3s binary",
+                f"k3s/k3s-images-{expected_arch}.tar": f"mission selected_substrate.payload_relpath bundle missing k3s images tar for {expected_arch}",
+                "platform/images.lock.json": "mission selected_substrate.payload_relpath bundle missing platform/images.lock.json",
+                "platform/profile.env": "mission selected_substrate.payload_relpath bundle missing platform/profile.env",
             }
             for required_name, error_message in required_files.items():
                 if required_name not in file_members:
                     raise SystemExit(error_message)
             if not has_platform_image_tar:
-                raise SystemExit("mission selected_airgap.payload_relpath bundle missing platform image tar payloads")
+                raise SystemExit("mission selected_substrate.payload_relpath bundle missing platform image tar payloads")
 
             manifest_member = file_members["manifest.env"]
             extracted_manifest = archive.extractfile(manifest_member)
             if extracted_manifest is None:
-                raise SystemExit("mission selected_airgap.payload_relpath bundle manifest.env is unreadable")
+                raise SystemExit("mission selected_substrate.payload_relpath bundle manifest.env is unreadable")
             if extracted_manifest.read() != manifest_path.read_bytes():
-                raise SystemExit("mission selected_airgap.manifest_relpath must match the tarball manifest.env content")
+                raise SystemExit("mission selected_substrate.manifest_relpath must match the tarball manifest.env content")
 
             parse_result = subprocess.run(
                 [
@@ -211,8 +211,6 @@ def validate_airgap_bundle(payload_path: pathlib.Path, manifest_path: pathlib.Pa
                     "--allow",
                     "OURBOX_PLATFORM_CONTRACT_REF",
                     "--allow",
-                    "OURBOX_PLATFORM_CONTRACT_DIGEST",
-                    "--allow",
                     "OURBOX_SUBSTRATE_ARCH",
                     "--allow",
                     "K3S_VERSION",
@@ -231,8 +229,6 @@ def validate_airgap_bundle(payload_path: pathlib.Path, manifest_path: pathlib.Pa
                     "--require",
                     "OURBOX_SUBSTRATE_CREATED",
                     "--require",
-                    "OURBOX_PLATFORM_CONTRACT_DIGEST",
-                    "--require",
                     "OURBOX_SUBSTRATE_ARCH",
                     "--require",
                     "K3S_VERSION",
@@ -250,8 +246,6 @@ def validate_airgap_bundle(payload_path: pathlib.Path, manifest_path: pathlib.Pa
                     "OURBOX_SUBSTRATE_VERSION",
                     "--print",
                     "OURBOX_SUBSTRATE_CREATED",
-                    "--print",
-                    "OURBOX_PLATFORM_CONTRACT_DIGEST",
                     "--print",
                     "OURBOX_SUBSTRATE_ARCH",
                     "--print",
@@ -272,20 +266,14 @@ def validate_airgap_bundle(payload_path: pathlib.Path, manifest_path: pathlib.Pa
                 raise SystemExit(f"failed to parse staged ourbox-substrate manifest: {detail}")
 
             manifest_fields = parse_result.stdout.splitlines()
-            if len(manifest_fields) != 10:
+            if len(manifest_fields) != 9:
                 raise SystemExit("staged ourbox-substrate manifest parse produced an unexpected field set")
-            if not sha256_re.fullmatch(manifest_fields[4]):
-                raise SystemExit("staged ourbox-substrate manifest carries invalid OURBOX_PLATFORM_CONTRACT_DIGEST")
-            if manifest_fields[4] != required_contract:
-                raise SystemExit(
-                    "staged ourbox-substrate manifest contract digest must match mission selected_airgap.platform_contract_digest"
-                )
-            if manifest_fields[5] != expected_arch:
-                raise SystemExit(f"staged ourbox-substrate manifest arch mismatch: expected {expected_arch}, got {manifest_fields[5]}")
-            if not plain_sha256_re.fullmatch(manifest_fields[9]):
+            if manifest_fields[4] != expected_arch:
+                raise SystemExit(f"staged ourbox-substrate manifest arch mismatch: expected {expected_arch}, got {manifest_fields[4]}")
+            if not plain_sha256_re.fullmatch(manifest_fields[8]):
                 raise SystemExit("staged ourbox-substrate manifest carries invalid OURBOX_PLATFORM_IMAGES_LOCK_SHA256")
     except tarfile.TarError as exc:
-        raise SystemExit(f"mission selected_airgap.payload_relpath must be a valid gzip tar archive: {exc}") from exc
+        raise SystemExit(f"mission selected_substrate.payload_relpath must be a valid gzip tar archive: {exc}") from exc
 
 if manifest.get("kind") != "ourbox-mission":
     raise SystemExit("mission manifest kind must be 'ourbox-mission'")
@@ -303,10 +291,6 @@ if target.get("media_kind") != "installer-usb":
 operator_mode = manifest.get("operator_mode", {})
 if operator_mode.get("mode") != "install":
     raise SystemExit("mission operator_mode.mode must be 'install'")
-platform_contract = manifest.get("platform_contract", {})
-platform_digest = str(platform_contract.get("digest", ""))
-if not platform_digest.startswith("sha256:") or len(platform_digest) != 71:
-    raise SystemExit("mission platform_contract.digest must be a sha256 digest")
 selected_os = resolved.get("os") or {}
 if selected_os.get("artifact_type") != expected_type:
     raise SystemExit(f"mission selected_os.artifact_type must be {expected_type}")
@@ -320,11 +304,6 @@ os_artifact_digest = str(selected_os.get("artifact_digest", ""))
 if not sha256_re.fullmatch(os_artifact_digest):
     raise SystemExit("mission selected_os.artifact_digest must be a sha256 digest")
 require_ref_digest_match("mission selected_os", os_artifact_ref, os_artifact_digest)
-contract = str(selected_os.get("platform_contract_digest", ""))
-if not sha256_re.fullmatch(contract):
-    raise SystemExit("mission selected_os.platform_contract_digest must be a sha256 digest")
-if contract != platform_digest:
-    raise SystemExit("mission selected_os.platform_contract_digest must match mission platform_contract.digest")
 selected_os_payload = selected_os.get("payload", {})
 os_payload_relpath = selected_os_payload.get("relpath")
 os_meta_relpath = selected_os.get("metadata_relpath")
@@ -338,41 +317,36 @@ if os_payload_path != expected_payload:
     raise SystemExit("mission selected_os.payload.relpath must match the explicit --os-payload input")
 if os_meta_path != expected_meta:
     raise SystemExit("mission selected_os.metadata_relpath must match the explicit --os-meta-env input")
-selected_airgap = resolved.get("airgap")
-if not isinstance(selected_airgap, dict) or not selected_airgap:
-    raise SystemExit("mission selected_airgap must be present")
-airgap_selection_mode = str(selected_airgap.get("selection_mode", ""))
-if not airgap_selection_mode:
-    raise SystemExit("mission selected_airgap.selection_mode must be set")
-airgap_selection_source = str(selected_airgap.get("selection_source", ""))
-if not airgap_selection_source:
-    raise SystemExit("mission selected_airgap.selection_source must be set")
-airgap_artifact_ref = str(selected_airgap.get("artifact_ref", ""))
-if not pinned_ref_re.fullmatch(airgap_artifact_ref):
-    raise SystemExit("mission selected_airgap.artifact_ref must be a digest-pinned OCI ref")
-airgap_artifact_digest = str(selected_airgap.get("artifact_digest", ""))
-if not sha256_re.fullmatch(airgap_artifact_digest):
-    raise SystemExit("mission selected_airgap.artifact_digest must be a sha256 digest")
-require_ref_digest_match("mission selected_airgap", airgap_artifact_ref, airgap_artifact_digest)
-if selected_airgap.get("arch") != expected_arch:
-    raise SystemExit(f"mission selected_airgap.arch must be {expected_arch}")
-airgap_contract = str(selected_airgap.get("platform_contract_digest", ""))
-if not sha256_re.fullmatch(airgap_contract):
-    raise SystemExit("mission selected_airgap.platform_contract_digest must be a sha256 digest")
-if airgap_contract != contract:
-    raise SystemExit("mission selected_airgap.platform_contract_digest must match selected_os.platform_contract_digest")
-if not isinstance(selected_airgap.get("present_in_selected_os_payload"), bool):
-    raise SystemExit("mission selected_airgap.present_in_selected_os_payload must be a boolean")
-payload_relpath = selected_airgap.get("payload_relpath")
-manifest_relpath = selected_airgap.get("manifest_relpath")
+selected_substrate = resolved.get("selected_substrate")
+if not isinstance(selected_substrate, dict) or not selected_substrate:
+    raise SystemExit("mission selected_substrate must be present")
+substrate_selection_mode = str(selected_substrate.get("selection_mode", ""))
+if not substrate_selection_mode:
+    raise SystemExit("mission selected_substrate.selection_mode must be set")
+substrate_selection_source = str(selected_substrate.get("selection_source", ""))
+if not substrate_selection_source:
+    raise SystemExit("mission selected_substrate.selection_source must be set")
+substrate_artifact_ref = str(selected_substrate.get("artifact_ref", ""))
+if not pinned_ref_re.fullmatch(substrate_artifact_ref):
+    raise SystemExit("mission selected_substrate.artifact_ref must be a digest-pinned OCI ref")
+substrate_artifact_digest = str(selected_substrate.get("artifact_digest", ""))
+if not sha256_re.fullmatch(substrate_artifact_digest):
+    raise SystemExit("mission selected_substrate.artifact_digest must be a sha256 digest")
+require_ref_digest_match("mission selected_substrate", substrate_artifact_ref, substrate_artifact_digest)
+if selected_substrate.get("arch") != expected_arch:
+    raise SystemExit(f"mission selected_substrate.arch must be {expected_arch}")
+if not isinstance(selected_substrate.get("present_in_selected_os_payload"), bool):
+    raise SystemExit("mission selected_substrate.present_in_selected_os_payload must be a boolean")
+payload_relpath = selected_substrate.get("payload_relpath")
+manifest_relpath = selected_substrate.get("manifest_relpath")
 if not payload_relpath:
-    raise SystemExit("mission selected_airgap.payload_relpath must be set")
+    raise SystemExit("mission selected_substrate.payload_relpath must be set")
 if not manifest_relpath:
-    raise SystemExit("mission selected_airgap.manifest_relpath must be set")
-airgap_payload_path = require_staged_file("mission selected_airgap.payload_relpath", payload_relpath)
-airgap_manifest_path = require_staged_file("mission selected_airgap.manifest_relpath", manifest_relpath)
-validate_sha256_sidecar("mission selected_airgap.payload.relpath", payload_relpath, airgap_payload_path)
-validate_airgap_bundle(airgap_payload_path, airgap_manifest_path, airgap_contract)
+    raise SystemExit("mission selected_substrate.manifest_relpath must be set")
+substrate_payload_path = require_staged_file("mission selected_substrate.payload_relpath", payload_relpath)
+substrate_manifest_path = require_staged_file("mission selected_substrate.manifest_relpath", manifest_relpath)
+validate_sha256_sidecar("mission selected_substrate.payload.relpath", payload_relpath, substrate_payload_path)
+validate_substrate_bundle(substrate_payload_path, substrate_manifest_path)
 
 installed_target_ssh = resolved.get("installed_target_ssh")
 if installed_target_ssh is not None:
@@ -508,11 +482,6 @@ payload_check="$(
     --allow OURBOX_RECIPE_GIT_HASH \
     --allow BUILD_TS \
     --allow GIT_SHA \
-    --allow OURBOX_PLATFORM_CONTRACT_SOURCE \
-    --allow OURBOX_PLATFORM_CONTRACT_REVISION \
-    --allow OURBOX_PLATFORM_CONTRACT_VERSION \
-    --allow OURBOX_PLATFORM_CONTRACT_CREATED \
-    --allow OURBOX_PLATFORM_CONTRACT_DIGEST \
     --allow OURBOX_SUBSTRATE_REF \
     --allow OURBOX_SUBSTRATE_DIGEST \
     --allow OURBOX_SUBSTRATE_SOURCE \
@@ -529,28 +498,11 @@ payload_check="$(
     --allow GITHUB_RUN_ID \
     --allow GITHUB_RUN_ATTEMPT \
     --require OS_ARTIFACT_TYPE \
-    --require OURBOX_PLATFORM_CONTRACT_DIGEST \
-    --require OURBOX_PLATFORM_CONTRACT_VERSION \
-    --print OS_ARTIFACT_TYPE \
-    --print OURBOX_PLATFORM_CONTRACT_DIGEST \
-    --print OURBOX_PLATFORM_CONTRACT_VERSION
+    --print OS_ARTIFACT_TYPE
 )"
 mapfile -t payload_fields <<<"${payload_check}"
-[[ "${#payload_fields[@]}" -eq 3 ]] || die "failed to parse ${OS_META_ENV}"
+[[ "${#payload_fields[@]}" -eq 1 ]] || die "failed to parse ${OS_META_ENV}"
 [[ "${payload_fields[0]}" == "application/vnd.techofourown.ourbox.woodbox.os-payload.v1" ]] \
   || die "payload meta artifact type mismatch in ${OS_META_ENV}"
-[[ "${payload_fields[1]}" =~ ^sha256:[0-9a-f]{64}$ ]] \
-  || die "payload meta contract digest missing or invalid in ${OS_META_ENV}"
-contract_version="${payload_fields[2]}"
-if [[ "${contract_version}" == "dev" ]]; then
-  : # edge-channel build — dev is emitted for push-to-main builds before semantic-release
-  : # tags the commit; it is definitionally newer than any tagged release
-elif [[ "${contract_version}" =~ ^v([0-9]+)\.([0-9]+)\. ]]; then
-  if (( 10#${BASH_REMATCH[1]} == 0 && 10#${BASH_REMATCH[2]} < 20 )); then
-    die "OS payload platform contract ${contract_version} predates the runtime app-surface capability (v0.20.0+ required); update the approved platform-contract snapshot in sw-ourbox-os"
-  fi
-else
-  die "payload meta OURBOX_PLATFORM_CONTRACT_VERSION is not a valid version string: ${contract_version}"
-fi
 
 log "Woodbox media adapter validation passed"

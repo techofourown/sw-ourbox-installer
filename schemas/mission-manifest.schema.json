@@ -13,7 +13,6 @@
     "adapter",
     "operator_mode",
     "mission_media",
-    "platform_contract",
     "requested",
     "resolved",
     "staged_files"
@@ -133,38 +132,13 @@
         }
       }
     },
-    "platform_contract": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "digest"
-      ],
-      "properties": {
-        "digest": {
-          "type": "string",
-          "pattern": "^sha256:[0-9a-f]{64}$"
-        },
-        "source": {
-          "type": "string"
-        },
-        "revision": {
-          "type": "string"
-        },
-        "version": {
-          "type": "string"
-        },
-        "created": {
-          "type": "string"
-        }
-      }
-    },
     "requested": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "substrate",
         "os",
-        "airgap"
+        "selected_substrate"
       ],
       "properties": {
         "substrate": {
@@ -205,7 +179,7 @@
             }
           }
         },
-        "airgap": {
+        "selected_substrate": {
           "type": "object",
           "additionalProperties": false,
           "required": [
@@ -303,7 +277,7 @@
       "required": [
         "substrate",
         "os",
-        "airgap"
+        "selected_substrate"
       ],
       "properties": {
         "substrate": {
@@ -346,7 +320,6 @@
             "artifact_ref",
             "artifact_digest",
             "artifact_type",
-            "platform_contract_digest",
             "payload",
             "metadata_relpath"
           ],
@@ -368,10 +341,6 @@
             "artifact_type": {
               "type": "string",
               "minLength": 1
-            },
-            "platform_contract_digest": {
-              "type": "string",
-              "pattern": "^sha256:[0-9a-f]{64}$"
             },
             "payload": {
               "type": "object",
@@ -402,7 +371,7 @@
             }
           }
         },
-        "airgap": {
+        "selected_substrate": {
           "type": "object",
           "additionalProperties": false,
           "required": [
@@ -410,7 +379,6 @@
             "selection_source",
             "artifact_ref",
             "artifact_digest",
-            "platform_contract_digest",
             "arch",
             "payload_relpath",
             "manifest_relpath",
@@ -431,10 +399,6 @@
               "minLength": 1
             },
             "artifact_digest": {
-              "type": "string",
-              "pattern": "^sha256:[0-9a-f]{64}$"
-            },
-            "platform_contract_digest": {
               "type": "string",
               "pattern": "^sha256:[0-9a-f]{64}$"
             },
