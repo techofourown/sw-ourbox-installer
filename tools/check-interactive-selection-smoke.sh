@@ -53,9 +53,16 @@ make_pinned_ref() {
 OS_STABLE_PINNED="$(make_pinned_ref "${OS_REPO}" 100)"
 OS_BETA_PINNED="$(make_pinned_ref "${OS_REPO}" 101)"
 OS_PAGE2_SELECTED_PINNED="$(make_pinned_ref "${OS_REPO}" 102)"
+SUBSTRATE_REPO="ghcr.io/example/ourbox-substrate"
+SUBSTRATE_CATALOG_TAG="catalog-amd64"
+SUBSTRATE_STABLE_PINNED="$(make_pinned_ref "${SUBSTRATE_REPO}" 200)"
+SUBSTRATE_BETA_PINNED="$(make_pinned_ref "${SUBSTRATE_REPO}" 201)"
+SUBSTRATE_PAGE2_SELECTED_PINNED="$(make_pinned_ref "${SUBSTRATE_REPO}" 202)"
 
 OS_CATALOG_DIR="${TMP_ROOT}/os-catalog"
+SUBSTRATE_CATALOG_DIR="${TMP_ROOT}/substrate-catalog"
 mkdir -p "${OS_CATALOG_DIR}"
+mkdir -p "${SUBSTRATE_CATALOG_DIR}"
 
 {
   echo $'channel\ttag\tcreated\tversion\tartifact_digest\tpinned_ref'
@@ -74,6 +81,23 @@ mkdir -p "${OS_CATALOG_DIR}"
   printf 'x86-stable\tx86-stable-oldest\t2026-03-01T12:00:00\tv0.1.0\tsha256:%064x\t%s\n' 100 "$(make_pinned_ref "${OS_REPO}" 100)"
 } > "${OS_CATALOG_DIR}/catalog.tsv"
 
+{
+  echo $'channel\tarch\ttag\tcreated\tversion\tartifact_digest\tpinned_ref'
+  printf 'beta\tamd64\tbeta\t2026-03-13T12:00:00Z\tv1.1.0\tsha256:%064x\t%s\n' 201 "${SUBSTRATE_BETA_PINNED}"
+  printf 'stable\tamd64\tstable\t2026-03-12T12:00:00Z\tv1.0.0\tsha256:%064x\t%s\n' 200 "${SUBSTRATE_STABLE_PINNED}"
+  printf 'nightly\tamd64\tnightly\t2026-03-11T12:00:00Z\tv0.11.0\tsha256:%064x\t%s\n' 211 "$(make_pinned_ref "${SUBSTRATE_REPO}" 211)"
+  printf 'exp-labs\tamd64\texp-labs\t2026-03-10T12:00:00Z\tv0.10.0\tsha256:%064x\t%s\n' 210 "$(make_pinned_ref "${SUBSTRATE_REPO}" 210)"
+  printf 'stable\tamd64\tstable-older-1\t2026-03-09T12:00:00Z\tv0.9.0\tsha256:%064x\t%s\n' 209 "$(make_pinned_ref "${SUBSTRATE_REPO}" 209)"
+  printf 'beta\tamd64\tbeta-older-1\t2026-03-08T12:00:00Z\tv0.8.0\tsha256:%064x\t%s\n' 208 "$(make_pinned_ref "${SUBSTRATE_REPO}" 208)"
+  printf 'nightly\tamd64\tnightly-older-1\t2026-03-07T12:00:00Z\tv0.7.0\tsha256:%064x\t%s\n' 207 "$(make_pinned_ref "${SUBSTRATE_REPO}" 207)"
+  printf 'exp-labs\tamd64\texp-labs-older-1\t2026-03-06T12:00:00Z\tv0.6.0\tsha256:%064x\t%s\n' 206 "$(make_pinned_ref "${SUBSTRATE_REPO}" 206)"
+  printf 'stable\tamd64\tstable-older-2\t2026-03-05T12:00:00Z\tv0.5.0\tsha256:%064x\t%s\n' 205 "$(make_pinned_ref "${SUBSTRATE_REPO}" 205)"
+  printf 'beta\tamd64\tbeta-older-2\t2026-03-04T12:00:00Z\tv0.4.0\tsha256:%064x\t%s\n' 204 "$(make_pinned_ref "${SUBSTRATE_REPO}" 204)"
+  printf 'nightly\tamd64\tnightly-older-2\t2026-03-03T12:00:00Z\tv0.3.0\tsha256:%064x\t%s\n' 203 "$(make_pinned_ref "${SUBSTRATE_REPO}" 203)"
+  printf 'exp-labs\tamd64\texp-labs-older-2\t2026-03-02T12:00:00Z\tv0.2.0\tsha256:%064x\t%s\n' 202 "${SUBSTRATE_PAGE2_SELECTED_PINNED}"
+  printf 'stable\tamd64\tstable-oldest\t2026-03-01T12:00:00Z\tv0.1.0\tsha256:%064x\t%s\n' 200 "$(make_pinned_ref "${SUBSTRATE_REPO}" 200)"
+} > "${SUBSTRATE_CATALOG_DIR}/catalog.tsv"
+
 try_cache_pull_oci_artifact() {
   local ref="$1"
   local _reuse_cache="$2"
@@ -82,6 +106,7 @@ try_cache_pull_oci_artifact() {
 
   case "${ref}" in
     "${OS_REPO}:${OS_CATALOG_TAG}") catalog_dir="${OS_CATALOG_DIR}" ;;
+    "${SUBSTRATE_REPO}:${SUBSTRATE_CATALOG_TAG}") catalog_dir="${SUBSTRATE_CATALOG_DIR}" ;;
     *) die "unexpected cache pull in interactive selection smoke: ${ref}" ;;
   esac
 
@@ -137,6 +162,71 @@ if (resolve_os_channel_ref "stable") >"${TMP_ROOT}/missing-os.out" 2>"${TMP_ROOT
 fi
 grep -F "OS catalog ${OS_REPO}:${OS_CATALOG_TAG} is unavailable" "${TMP_ROOT}/missing-os.err" >/dev/null \
   || die "expected missing OS catalog failure to mention the unavailable catalog"
+
+try_cache_pull_oci_artifact() {
+  local ref="$1"
+  local _reuse_cache="$2"
+  local outvar="$3"
+  local catalog_dir=""
+
+  case "${ref}" in
+    "${OS_REPO}:${OS_CATALOG_TAG}") catalog_dir="${OS_CATALOG_DIR}" ;;
+    "${SUBSTRATE_REPO}:${SUBSTRATE_CATALOG_TAG}") catalog_dir="${SUBSTRATE_CATALOG_DIR}" ;;
+    *) die "unexpected cache pull in interactive selection smoke: ${ref}" ;;
+  esac
+
+  printf -v "${outvar}" '%s' "${catalog_dir}"
+  return 0
+}
+
+EXPECTED_SUBSTRATE_ARCH="amd64"
+SUBSTRATE_CHANNEL="stable"
+SUBSTRATE_REF=""
+SELECTED_SUBSTRATE_REF=""
+SELECTED_SUBSTRATE_SELECTION_SOURCE=""
+SELECTED_SUBSTRATE_RELEASE_CHANNEL=""
+determine_substrate_ref <<< $'l\n\n\n'
+[[ "${SELECTED_SUBSTRATE_REF}" == "${SUBSTRATE_STABLE_PINNED}" ]] || {
+  die "expected pager cancel followed by ENTER to keep the default substrate selection"
+}
+[[ "${SELECTED_SUBSTRATE_SELECTION_SOURCE}" == "catalog" ]] || {
+  die "expected pager cancel fallback substrate selection source to remain catalog"
+}
+[[ "${SELECTED_SUBSTRATE_RELEASE_CHANNEL}" == "stable" ]] || {
+  die "expected pager cancel fallback substrate release channel to remain stable"
+}
+
+SUBSTRATE_CHANNEL="stable"
+SUBSTRATE_REF=""
+SELECTED_SUBSTRATE_REF=""
+SELECTED_SUBSTRATE_SELECTION_SOURCE=""
+SELECTED_SUBSTRATE_RELEASE_CHANNEL=""
+determine_substrate_ref <<< $'l\n1\n'
+[[ "${SELECTED_SUBSTRATE_REF}" == "${SUBSTRATE_BETA_PINNED}" ]] || {
+  die "expected substrate catalog list selection to choose the first listed row"
+}
+[[ "${SELECTED_SUBSTRATE_SELECTION_SOURCE}" == "catalog" ]] || {
+  die "expected listed substrate selection source to be catalog"
+}
+[[ "${SELECTED_SUBSTRATE_RELEASE_CHANNEL}" == "beta" ]] || {
+  die "expected listed substrate release channel to normalize to beta"
+}
+
+SUBSTRATE_CHANNEL="stable"
+SUBSTRATE_REF=""
+SELECTED_SUBSTRATE_REF=""
+SELECTED_SUBSTRATE_SELECTION_SOURCE=""
+SELECTED_SUBSTRATE_RELEASE_CHANNEL=""
+determine_substrate_ref <<< $'l\nn\n2\n'
+[[ "${SELECTED_SUBSTRATE_REF}" == "${SUBSTRATE_PAGE2_SELECTED_PINNED}" ]] || {
+  die "expected paginated substrate catalog selection to choose the second row on page two"
+}
+[[ "${SELECTED_SUBSTRATE_SELECTION_SOURCE}" == "catalog" ]] || {
+  die "expected paginated substrate selection source to be catalog"
+}
+[[ "${SELECTED_SUBSTRATE_RELEASE_CHANNEL}" == "exp-labs" ]] || {
+  die "expected paginated substrate release channel to normalize to exp-labs"
+}
 
 SUBSTRATE_EXTRACT_DIR="${TMP_ROOT}/substrate-extract"
 mkdir -p "${SUBSTRATE_EXTRACT_DIR}/platform"

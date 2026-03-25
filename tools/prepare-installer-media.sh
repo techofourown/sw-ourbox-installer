@@ -1755,6 +1755,41 @@ choose_substrate_channel_interactive() {
   resolve_substrate_channel_ref "${SUBSTRATE_CHANNEL}"
 }
 
+select_substrate_ref_from_catalog_interactive() {
+  local catalog_cache_dir=""
+  local catalog_tsv=""
+  local chosen=""
+  local normalized_channel=""
+  local channel=""
+  local tag=""
+  local created=""
+  local version=""
+  local artifact_digest=""
+  local pinned_ref=""
+  local -a entries=()
+
+  if ! try_cache_pull_oci_artifact "${SUBSTRATE_REPO}:${SUBSTRATE_CATALOG_TAG}" "${CACHE_REUSE_ENABLED}" catalog_cache_dir; then
+    log "Catalog unavailable; skipping list."
+    return 1
+  fi
+
+  catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
+  mapfile -t entries < <(list_os_catalog_entries "${catalog_tsv}")
+  if [[ "${#entries[@]}" -eq 0 ]]; then
+    log "Catalog pulled (${SUBSTRATE_REPO}:${SUBSTRATE_CATALOG_TAG}) but contained no valid entries."
+    return 1
+  fi
+
+  paginate_catalog_entries_interactive "Catalog entries (${SUBSTRATE_REPO}:${SUBSTRATE_CATALOG_TAG})" entries render_os_catalog_entry chosen || return 1
+  IFS=$'\t' read -r channel tag created version artifact_digest pinned_ref <<<"${chosen}"
+  normalized_channel="$(normalize_release_channel "${channel}")"
+  SELECTED_SUBSTRATE_SELECTION_MODE="host-selected"
+  SELECTED_SUBSTRATE_SELECTION_SOURCE="catalog"
+  SELECTED_SUBSTRATE_RELEASE_CHANNEL="${normalized_channel}"
+  SELECTED_SUBSTRATE_REF="${pinned_ref}"
+  log "Selected ${SELECTED_SUBSTRATE_REF} (channel=${normalized_channel}, version=${version}, digest=${artifact_digest})"
+}
+
 prompt_custom_substrate_ref_interactive() {
   local ref=""
 
@@ -1828,6 +1863,9 @@ interactive_select_substrate_ref() {
         ;;
       c)
         choose_substrate_channel_interactive || true
+        ;;
+      l)
+        select_substrate_ref_from_catalog_interactive || true
         ;;
       r)
         prompt_custom_substrate_ref_interactive || true
