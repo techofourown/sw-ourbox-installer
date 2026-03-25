@@ -153,9 +153,22 @@ cat > "${SUBSTRATE_DIR}/catalog.json" <<'EOF'
   "kind": "ourbox-application-catalog",
   "catalog_id": "demo-apps",
   "catalog_name": "Demo Apps",
+  "default_app_ids": [
+    "landing"
+  ],
   "apps": [
     {
-      "id": "landing"
+      "id": "landing",
+      "image_names": [
+        "landing"
+      ],
+      "services": [
+        {
+          "name": "landing",
+          "image": "landing",
+          "port": 80
+        }
+      ]
     }
   ]
 }
@@ -330,7 +343,33 @@ bash "${ROOT}/vendor/matchbox/validate-media.sh" \
   --os-payload "${OS_DIR}/os.img.xz" \
   --os-meta-env "${OS_DIR}/os.meta.env"
 
-python3 - <<'PY' "${MISSION_DIR}/mission-manifest.json"
+expect_validation_failure() {
+  local mission_dir="$1"
+  local description="$2"
+  local expected_message="$3"
+  local output=""
+  local status=0
+
+  set +e
+  output="$(
+    bash "${ROOT}/vendor/matchbox/validate-media.sh" \
+      --mission-dir "${mission_dir}" \
+      --os-payload "${OS_DIR}/os.img.xz" \
+      --os-meta-env "${OS_DIR}/os.meta.env" 2>&1
+  )"
+  status=$?
+  set -e
+
+  [[ "${status}" -ne 0 ]] || die "expected vendored matchbox validator to reject ${description}"
+  if [[ -n "${expected_message}" ]]; then
+    grep -Fq "${expected_message}" <<<"${output}" \
+      || die "vendored matchbox validator did not explain ${description}"
+  fi
+}
+
+BAD_MISSION_DIR="${TMP}/bad-mission-missing-apps"
+cp -a "${MISSION_DIR}" "${BAD_MISSION_DIR}"
+python3 - <<'PY' "${BAD_MISSION_DIR}/mission-manifest.json"
 import json
 import pathlib
 import sys
@@ -346,11 +385,26 @@ with manifest_path.open("w", encoding="utf-8") as handle:
     json.dump(manifest, handle, indent=2)
     handle.write("\n")
 PY
+expect_validation_failure "${BAD_MISSION_DIR}" \
+  "mission manifests missing selected_applications" \
+  ""
 
-bash "${ROOT}/vendor/matchbox/validate-media.sh" \
-  --mission-dir "${MISSION_DIR}" \
-  --os-payload "${OS_DIR}/os.img.xz" \
-  --os-meta-env "${OS_DIR}/os.meta.env"
+BAD_MISSION_DIR="${TMP}/bad-mission-missing-service-image"
+cp -a "${MISSION_DIR}" "${BAD_MISSION_DIR}"
+cat > "${BAD_MISSION_DIR}/artifacts/substrate/application-images.lock.json" <<'EOF'
+{
+  "schema": 1,
+  "images": [
+    {
+      "name": "not-landing",
+      "ref": "ghcr.io/example/landing@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ]
+}
+EOF
+expect_validation_failure "${BAD_MISSION_DIR}" \
+  "application images locks missing selected service images" \
+  ""
 
 SUBSTRATE_RAW="${TMP}/installer-substrate.img"
 SUBSTRATE_ARTIFACT="${TMP}/installer-substrate.img.xz"

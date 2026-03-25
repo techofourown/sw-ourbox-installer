@@ -449,10 +449,8 @@ validate_substrate_bundle(staged_substrate_payload, staged_substrate_manifest)
 
 selected_applications = resolved.get("applications")
 supported_selection_modes = {"catalog-defaults", "all-apps", "custom"}
-if selected_applications is None:
-    pass
-elif not isinstance(selected_applications, dict) or not selected_applications:
-    raise SystemExit("mission selected_applications must be an object when present")
+if not isinstance(selected_applications, dict) or not selected_applications:
+    raise SystemExit("mission selected_applications must be present")
 else:
     catalog_id = str(selected_applications.get("catalog_id", "")).strip()
     catalog_name = str(selected_applications.get("catalog_name", "")).strip()
@@ -507,11 +505,15 @@ else:
     if not isinstance(catalog_apps, list) or not catalog_apps:
         raise SystemExit("mission application catalog must declare a non-empty apps list")
     catalog_app_ids = set()
+    catalog_apps_by_id = {}
     for app in catalog_apps:
         app_id = str(app.get("id", "")).strip()
         if not app_id:
             raise SystemExit("mission application catalog contains an app without an id")
+        if app_id in catalog_app_ids:
+            raise SystemExit(f"mission application catalog duplicates app id {app_id}")
         catalog_app_ids.add(app_id)
+        catalog_apps_by_id[app_id] = app
     unknown_app_ids = [app_id for app_id in normalized_app_ids if app_id not in catalog_app_ids]
     if unknown_app_ids:
         raise SystemExit(
@@ -536,6 +538,38 @@ else:
         if not image_ref:
             raise SystemExit(f"mission application images lock entry {image_name} is missing a ref")
         seen_image_names.add(image_name)
+
+    for app_id in normalized_app_ids:
+        app = catalog_apps_by_id[app_id]
+        image_names = app.get("image_names")
+        if not isinstance(image_names, list) or not image_names:
+            raise SystemExit(f"mission application catalog app {app_id} must declare a non-empty image_names list")
+        normalized_image_names = set()
+        for raw_image_name in image_names:
+            image_name = str(raw_image_name).strip()
+            if not image_name:
+                raise SystemExit(f"mission application catalog app {app_id} contains an empty image_names entry")
+            normalized_image_names.add(image_name)
+        services = app.get("services")
+        if not isinstance(services, list) or not services:
+            raise SystemExit(f"mission application catalog app {app_id} must declare a non-empty services list")
+        for service in services:
+            service_name = str(service.get("name", "")).strip()
+            if not service_name:
+                raise SystemExit(f"mission application catalog app {app_id} contains a service without a name")
+            image_name = str(service.get("image", "")).strip()
+            if not image_name:
+                raise SystemExit(f"mission application catalog app {app_id} service {service_name} must declare an image")
+            if image_name not in normalized_image_names:
+                raise SystemExit(
+                    f"mission application catalog app {app_id} service {service_name} references image {image_name} "
+                    "not listed in image_names"
+                )
+            if image_name not in seen_image_names:
+                raise SystemExit(
+                    f"mission application images lock is missing image {image_name} required by selected app "
+                    f"{app_id} service {service_name}"
+                )
 
     with selection_path.open("r", encoding="utf-8") as handle:
         selection_data = json.load(handle)
