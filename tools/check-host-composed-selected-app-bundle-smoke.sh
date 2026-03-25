@@ -116,6 +116,10 @@ synthesize_selected_application_bundle
 
 EXPECTED_SHA="$(sha256_file "${SUBSTRATE_STAGE_DIR}/ourbox-substrate.tar.gz")"
 EXPECTED_REF="host-composed.local/application-catalog/${APPLICATION_CATALOG_ID}@sha256:${EXPECTED_SHA}"
+EXTRACT_DIR="${TMP_ROOT}/bundle-extract"
+
+mkdir -p "${EXTRACT_DIR}"
+tar -xzf "${SUBSTRATE_STAGE_DIR}/ourbox-substrate.tar.gz" -C "${EXTRACT_DIR}"
 
 [[ "${SELECTED_SUBSTRATE_PINNED_REF}" == "${EXPECTED_REF}" ]] || {
   echo "unexpected selected substrate ref: ${SELECTED_SUBSTRATE_PINNED_REF}" >&2
@@ -127,6 +131,22 @@ EXPECTED_REF="host-composed.local/application-catalog/${APPLICATION_CATALOG_ID}@
 }
 [[ "$(tr -d '\n' < "${SUBSTRATE_STAGE_DIR}/artifact.ref")" == "${EXPECTED_REF}" ]] || {
   echo "artifact.ref did not match the digest-pinned host-composed bundle ref" >&2
+  exit 1
+}
+[[ -f "${EXTRACT_DIR}/platform/catalog.json" ]] || {
+  echo "synthetic substrate bundle is missing platform/catalog.json" >&2
+  exit 1
+}
+[[ -f "${EXTRACT_DIR}/platform/selected-apps.json" ]] || {
+  echo "synthetic substrate bundle is missing platform/selected-apps.json" >&2
+  exit 1
+}
+cmp -s "${PAYLOAD_ROOT}/platform/images.lock.json" "${EXTRACT_DIR}/platform/images.lock.json" || {
+  echo "synthetic substrate bundle did not preserve the baked platform images lock" >&2
+  exit 1
+}
+[[ -f "${EXTRACT_DIR}/platform/images/$(image_tar_name "ghcr.io/example/landing@sha256:1111111111111111111111111111111111111111111111111111111111111111")" ]] || {
+  echo "synthetic substrate bundle is missing the selected application image tar" >&2
   exit 1
 }
 

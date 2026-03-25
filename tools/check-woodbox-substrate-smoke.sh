@@ -107,6 +107,21 @@ cat > "${SUBSTRATE_DIR}/selected-apps.json" <<'EOF'
   ]
 }
 EOF
+cat > "${SUBSTRATE_DIR}/application-images.lock.json" <<'EOF'
+{
+  "schema": 1,
+  "images": [
+    {
+      "name": "landing",
+      "ref": "ghcr.io/example/landing@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "name": "dufs",
+      "ref": "ghcr.io/example/dufs@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ]
+}
+EOF
 printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFM7xJ0oE1W8rQx6wH4M7dQf3J6pV8nX2kL4cR5sT6u7 fixture@host\n' > "${SSH_DIR}/authorized-key.pub"
 
 cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
@@ -227,6 +242,7 @@ cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
         "dufs"
       ],
       "catalog_relpath": "artifacts/substrate/catalog.json",
+      "images_lock_relpath": "artifacts/substrate/application-images.lock.json",
       "selection_relpath": "artifacts/substrate/selected-apps.json"
     },
     "installed_target_ssh": {

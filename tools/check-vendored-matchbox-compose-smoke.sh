@@ -147,6 +147,41 @@ tar -C "${SUBSTRATE_SOURCE_DIR}" -czf "${SUBSTRATE_DIR}/ourbox-substrate.tar.gz"
 printf '%s  %s\n' "$(sha256sum "${SUBSTRATE_DIR}/ourbox-substrate.tar.gz" | awk '{print $1}')" "ourbox-substrate.tar.gz" \
   > "${SUBSTRATE_DIR}/ourbox-substrate.tar.gz.sha256"
 cp -f "${SUBSTRATE_SOURCE_DIR}/manifest.env" "${SUBSTRATE_DIR}/manifest.env"
+cat > "${SUBSTRATE_DIR}/catalog.json" <<'EOF'
+{
+  "schema": 1,
+  "kind": "ourbox-application-catalog",
+  "catalog_id": "demo-apps",
+  "catalog_name": "Demo Apps",
+  "apps": [
+    {
+      "id": "landing"
+    }
+  ]
+}
+EOF
+cat > "${SUBSTRATE_DIR}/selected-apps.json" <<'EOF'
+{
+  "schema": 1,
+  "kind": "ourbox-selected-applications",
+  "catalog_id": "demo-apps",
+  "selection_mode": "custom",
+  "selected_app_ids": [
+    "landing"
+  ]
+}
+EOF
+cat > "${SUBSTRATE_DIR}/application-images.lock.json" <<'EOF'
+{
+  "schema": 1,
+  "images": [
+    {
+      "name": "landing",
+      "ref": "ghcr.io/example/landing@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ]
+}
+EOF
 
 python3 - <<'PY' "${MISSION_DIR}" "${ROOT}/vendor/matchbox/adapter.json"
 import hashlib
@@ -170,6 +205,9 @@ os_payload = mission_dir / "artifacts/os/os.img.xz"
 os_meta = mission_dir / "artifacts/os/os.meta.env"
 substrate_payload = mission_dir / "artifacts/substrate/ourbox-substrate.tar.gz"
 substrate_manifest = mission_dir / "artifacts/substrate/manifest.env"
+application_catalog = mission_dir / "artifacts/substrate/catalog.json"
+application_images_lock = mission_dir / "artifacts/substrate/application-images.lock.json"
+selected_apps = mission_dir / "artifacts/substrate/selected-apps.json"
 
 staged_files = []
 for path in sorted(mission_dir.rglob("*")):
@@ -265,6 +303,15 @@ manifest = {
             "manifest_relpath": substrate_manifest.relative_to(mission_dir).as_posix(),
             "present_in_selected_os_payload": False,
         },
+        "applications": {
+            "catalog_id": "demo-apps",
+            "catalog_name": "Demo Apps",
+            "selection_mode": "custom",
+            "selected_app_ids": ["landing"],
+            "catalog_relpath": application_catalog.relative_to(mission_dir).as_posix(),
+            "images_lock_relpath": application_images_lock.relative_to(mission_dir).as_posix(),
+            "selection_relpath": selected_apps.relative_to(mission_dir).as_posix(),
+        },
     },
     "staged_files": staged_files,
 }
@@ -325,6 +372,8 @@ VERIFY_ROOT_PART="$(find_installer_root_partition "${VERIFY_LOOPDEV}" "${VERIFY_
 [[ -n "${VERIFY_ROOT_PART}" ]] || die "failed to locate composed Matchbox installer root partition"
 ${SUDO} test -f "${VERIFY_MOUNT_DIR}/opt/ourbox/mission/mission-manifest.json" \
   || die "composed Matchbox media is missing embedded mission-manifest.json"
+${SUDO} test -f "${VERIFY_MOUNT_DIR}/opt/ourbox/mission/artifacts/substrate/application-images.lock.json" \
+  || die "composed Matchbox media is missing embedded application-images.lock.json"
 ${SUDO} cmp -s "${VERIFY_MOUNT_DIR}/opt/ourbox/mission/mission-manifest.json" \
   "${MISSION_DIR}/mission-manifest.json" \
   || die "embedded Matchbox mission manifest does not match the staged mission"

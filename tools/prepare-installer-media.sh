@@ -3336,9 +3336,8 @@ synthesize_selected_application_bundle() {
   local image_name=""
   local image_ref=""
   local target_tar=""
-  local baked_tar=""
   local synthetic_sha=""
-  local merged_images_lock_sha=""
+  local platform_images_lock_sha=""
   local bundle_ref=""
   local bundle_version=""
 
@@ -3351,15 +3350,14 @@ synthesize_selected_application_bundle() {
   fi
   [[ -d "${base_substrate_dir}" ]] || die "selected OS payload did not contain a baked substrate directory"
   [[ -f "${base_substrate_dir}/manifest.env" ]] || die "selected OS payload baked substrate bundle is missing manifest.env"
+  [[ -f "${base_substrate_dir}/platform/images.lock.json" ]] || die "selected OS payload baked substrate bundle is missing platform/images.lock.json"
   [[ -d "${base_substrate_dir}/platform/images" ]] || die "selected OS payload baked substrate bundle is missing platform/images"
 
   cp -a "${base_substrate_dir}/." "${synthetic_root}/"
-  rm -rf "${synthetic_images_dir}"
   mkdir -p "${synthetic_images_dir}"
 
   cp -f "${MERGED_APPLICATION_CATALOG_FILE}" "${synthetic_root}/platform/catalog.json"
   cp -f "${MERGED_SELECTED_APPLICATIONS_FILE}" "${synthetic_root}/platform/selected-apps.json"
-  cp -f "${MERGED_IMAGES_LOCK_FILE}" "${synthetic_root}/platform/images.lock.json"
 
   image_dump="$(
     python3 - <<'PY' "${MERGED_IMAGES_LOCK_FILE}"
@@ -3385,10 +3383,7 @@ PY
   while IFS=$'\t' read -r image_name image_ref; do
     [[ -n "${image_name}" && -n "${image_ref}" ]] || continue
     target_tar="${synthetic_images_dir}/$(image_tar_name "${image_ref}")"
-    baked_tar="${base_substrate_dir}/platform/images/$(image_tar_name "${image_ref}")"
-
-    if [[ -f "${baked_tar}" ]]; then
-      cp -f "${baked_tar}" "${target_tar}"
+    if [[ -f "${target_tar}" ]]; then
       continue
     fi
 
@@ -3396,7 +3391,7 @@ PY
     pull_and_save_image_tar "${image_ref}" "${target_tar}"
   done <<<"${image_dump}"
 
-  merged_images_lock_sha="$(sha256_file "${MERGED_IMAGES_LOCK_FILE}")"
+  platform_images_lock_sha="$(sha256_file "${synthetic_root}/platform/images.lock.json")"
   bundle_version="host-selected-${APPLICATION_CATALOG_ID}"
 
   cat > "${synthetic_root}/manifest.env" <<EOF_MANIFEST
@@ -3408,7 +3403,7 @@ OURBOX_SUBSTRATE_ARCH=${EXPECTED_SUBSTRATE_ARCH}
 K3S_VERSION=${BAKED_SUBSTRATE_K3S_VERSION}
 OURBOX_PLATFORM_PROFILE=${BAKED_SUBSTRATE_PROFILE}
 OURBOX_PLATFORM_IMAGES_LOCK_PATH=platform/images.lock.json
-OURBOX_PLATFORM_IMAGES_LOCK_SHA256=${merged_images_lock_sha}
+OURBOX_PLATFORM_IMAGES_LOCK_SHA256=${platform_images_lock_sha}
 EOF_MANIFEST
 
   tar -C "${synthetic_root}" -czf "${SUBSTRATE_STAGE_DIR}/ourbox-substrate.tar.gz" k3s platform manifest.env
@@ -3433,7 +3428,7 @@ EOF_MANIFEST
   SELECTED_SUBSTRATE_K3S_VERSION="${BAKED_SUBSTRATE_K3S_VERSION}"
   SELECTED_SUBSTRATE_PROFILE="${BAKED_SUBSTRATE_PROFILE}"
   SELECTED_SUBSTRATE_IMAGES_LOCK_PATH="platform/images.lock.json"
-  SELECTED_SUBSTRATE_IMAGES_LOCK_SHA256="${merged_images_lock_sha}"
+  SELECTED_SUBSTRATE_IMAGES_LOCK_SHA256="${platform_images_lock_sha}"
 }
 
 initial_cache_refs=()
@@ -3591,6 +3586,7 @@ if [[ "${TARGET_SUPPORTS_APPLICATION_CATALOGS}" == "1" ]]; then
   if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
     cp -f "${MERGED_APPLICATION_CATALOG_FILE}" "${SUBSTRATE_STAGE_DIR}/catalog.json"
     cp -f "${MERGED_SELECTED_APPLICATIONS_FILE}" "${SUBSTRATE_STAGE_DIR}/selected-apps.json"
+    cp -f "${MERGED_IMAGES_LOCK_FILE}" "${SUBSTRATE_STAGE_DIR}/application-images.lock.json"
   fi
 else
   stage_selected_substrate_bundle
@@ -3640,6 +3636,7 @@ substrate_payload = mission_dir / "artifacts" / "substrate" / "ourbox-substrate.
 substrate_manifest = mission_dir / "artifacts" / "substrate" / "manifest.env"
 application_catalog = mission_dir / "artifacts" / "substrate" / "catalog.json"
 selected_apps = mission_dir / "artifacts" / "substrate" / "selected-apps.json"
+application_images_lock = mission_dir / "artifacts" / "substrate" / "application-images.lock.json"
 installed_target_ssh_key = mission_dir / "artifacts" / "installed-target-ssh" / "authorized-key.pub"
 
 def sha256(path: Path) -> str:
@@ -3792,6 +3789,7 @@ if os.environ.get("APPLICATION_CATALOG_PRESENT") == "1":
         "selected_app_ids": json.loads(os.environ["SELECTED_APPLICATION_IDS_JSON"]),
         "catalog_relpath": application_catalog.relative_to(mission_dir).as_posix(),
         "selection_relpath": selected_apps.relative_to(mission_dir).as_posix(),
+        "images_lock_relpath": application_images_lock.relative_to(mission_dir).as_posix(),
         "source_catalogs": resolved_source_catalogs,
     }
 

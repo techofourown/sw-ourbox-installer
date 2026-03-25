@@ -444,7 +444,8 @@
             "selection_mode",
             "selected_app_ids",
             "catalog_relpath",
-            "selection_relpath"
+            "selection_relpath",
+            "images_lock_relpath"
           ],
           "properties": {
             "catalog_id": {
@@ -471,6 +472,10 @@
               "minLength": 1
             },
             "selection_relpath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "images_lock_relpath": {
               "type": "string",
               "minLength": 1
             },
