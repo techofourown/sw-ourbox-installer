@@ -338,10 +338,16 @@ python3 "${ROOT}/tools/validate-mission-manifest.py" \
   "${ROOT}/schemas/mission-manifest.schema.json" \
   "${MISSION_DIR}/mission-manifest.json"
 
-bash "${ROOT}/vendor/matchbox/validate-media.sh" \
-  --mission-dir "${MISSION_DIR}" \
-  --os-payload "${OS_DIR}/os.img.xz" \
-  --os-meta-env "${OS_DIR}/os.meta.env"
+validate_mission_dir() {
+  local mission_dir="$1"
+
+  bash "${ROOT}/vendor/matchbox/validate-media.sh" \
+    --mission-dir "${mission_dir}" \
+    --os-payload "${mission_dir}/artifacts/os/os.img.xz" \
+    --os-meta-env "${mission_dir}/artifacts/os/os.meta.env"
+}
+
+validate_mission_dir "${MISSION_DIR}"
 
 expect_validation_failure() {
   local mission_dir="$1"
@@ -352,10 +358,7 @@ expect_validation_failure() {
 
   set +e
   output="$(
-    bash "${ROOT}/vendor/matchbox/validate-media.sh" \
-      --mission-dir "${mission_dir}" \
-      --os-payload "${OS_DIR}/os.img.xz" \
-      --os-meta-env "${OS_DIR}/os.meta.env" 2>&1
+    validate_mission_dir "${mission_dir}" 2>&1
   )"
   status=$?
   set -e
@@ -385,8 +388,27 @@ with manifest_path.open("w", encoding="utf-8") as handle:
     json.dump(manifest, handle, indent=2)
     handle.write("\n")
 PY
+validate_mission_dir "${BAD_MISSION_DIR}"
+
+BAD_MISSION_DIR="${TMP}/bad-mission-partial-apps"
+cp -a "${MISSION_DIR}" "${BAD_MISSION_DIR}"
+python3 - <<'PY' "${BAD_MISSION_DIR}/mission-manifest.json"
+import json
+import pathlib
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+with manifest_path.open("r", encoding="utf-8") as handle:
+    manifest = json.load(handle)
+
+manifest["resolved"]["applications"].pop("selection_relpath", None)
+
+with manifest_path.open("w", encoding="utf-8") as handle:
+    json.dump(manifest, handle, indent=2)
+    handle.write("\n")
+PY
 expect_validation_failure "${BAD_MISSION_DIR}" \
-  "mission manifests missing selected_applications" \
+  "mission manifests with partial selected_applications" \
   ""
 
 BAD_MISSION_DIR="${TMP}/bad-mission-missing-service-image"
