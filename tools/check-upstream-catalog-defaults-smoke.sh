@@ -73,8 +73,8 @@ APPLICATION_CATALOG_SOURCES_JSON='[
   }
 ]'
 
-AIRGAP_REF=""
-AIRGAP_CHANNEL=""
+SUBSTRATE_REF=""
+SUBSTRATE_CHANNEL=""
 SELECTED_APPLICATION_CATALOG_SOURCES_JSON=""
 SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY=""
 determine_application_catalog_sources
@@ -106,10 +106,10 @@ CATALOG_INDEX_REF="ghcr.io/example/sw-ourbox-catalog-demo:catalog-amd64"
 CATALOG_INDEX_CACHE_DIR="${TMP_ROOT}/catalog-index-cache"
 mkdir -p "${CATALOG_INDEX_CACHE_DIR}"
 cat > "${CATALOG_INDEX_CACHE_DIR}/catalog.tsv" <<'EOF_INDEX'
-channel	tag	created	version	revision	arch	platform_contract_digest	platform_profile	platform_images_lock_sha256	artifact_digest	pinned_ref
-stable	main-older	2026-03-16T10:00:00Z	v0.1.0	111111111111	amd64	sha256:636af2d46d04b086366e97184d4e257d6c6e7dc75f070758d032cdd3cd4ff976	demo-apps	sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa	sha256:1111111111111111111111111111111111111111111111111111111111111111	ghcr.io/example/sw-ourbox-catalog-demo@sha256:1111111111111111111111111111111111111111111111111111111111111111
-stable	main-newer	2026-03-16T11:00:00Z	v0.1.1	222222222222	amd64	sha256:636af2d46d04b086366e97184d4e257d6c6e7dc75f070758d032cdd3cd4ff976	demo-apps	sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb	sha256:2222222222222222222222222222222222222222222222222222222222222222	ghcr.io/example/sw-ourbox-catalog-demo@sha256:2222222222222222222222222222222222222222222222222222222222222222
-beta	main-beta	2026-03-16T12:00:00Z	v0.2.0	333333333333	amd64	sha256:636af2d46d04b086366e97184d4e257d6c6e7dc75f070758d032cdd3cd4ff976	demo-apps	sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc	sha256:3333333333333333333333333333333333333333333333333333333333333333	ghcr.io/example/sw-ourbox-catalog-demo@sha256:3333333333333333333333333333333333333333333333333333333333333333
+channel	tag	created	version	revision	arch	platform_profile	platform_images_lock_sha256	artifact_digest	pinned_ref
+stable	main-older	2026-03-16T10:00:00Z	v0.1.0	111111111111	amd64	demo-apps	sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa	sha256:1111111111111111111111111111111111111111111111111111111111111111	ghcr.io/example/sw-ourbox-catalog-demo@sha256:1111111111111111111111111111111111111111111111111111111111111111
+stable	main-newer	2026-03-16T11:00:00Z	v0.1.1	222222222222	amd64	demo-apps	sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb	sha256:2222222222222222222222222222222222222222222222222222222222222222	ghcr.io/example/sw-ourbox-catalog-demo@sha256:2222222222222222222222222222222222222222222222222222222222222222
+beta	main-beta	2026-03-16T12:00:00Z	v0.2.0	333333333333	amd64	demo-apps	sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc	sha256:3333333333333333333333333333333333333333333333333333333333333333	ghcr.io/example/sw-ourbox-catalog-demo@sha256:3333333333333333333333333333333333333333333333333333333333333333
 EOF_INDEX
 
 cache_pull_oci_artifact() {
@@ -124,8 +124,7 @@ cache_pull_oci_artifact() {
   printf -v "${outvar}" '%s' "${CATALOG_INDEX_CACHE_DIR}"
 }
 
-PLATFORM_CONTRACT_DIGEST="sha256:636af2d46d04b086366e97184d4e257d6c6e7dc75f070758d032cdd3cd4ff976"
-EXPECTED_AIRGAP_ARCH="amd64"
+EXPECTED_SUBSTRATE_ARCH="amd64"
 INSTALL_DEFAULTS_REF="ghcr.io/example/sw-ourbox-os/install-defaults:stable"
 resolved_catalog_ref="$(resolve_application_catalog_bundle_ref_from_catalog "${CATALOG_INDEX_REF}" stable)"
 [[ "${resolved_catalog_ref}" == "ghcr.io/example/sw-ourbox-catalog-demo@sha256:2222222222222222222222222222222222222222222222222222222222222222" ]] || {
@@ -145,8 +144,8 @@ mkdir -p "${CUSTOM_INDEX_CACHE_DIR}" "${CUSTOM_BUNDLE_CACHE_DIR}" "${CUSTOM_BUND
 : > "${PULL_LOG}"
 
 cat > "${CUSTOM_INDEX_CACHE_DIR}/catalog.tsv" <<EOF_CUSTOM_INDEX
-channel	tag	created	version	revision	arch	platform_contract_digest	platform_profile	platform_images_lock_sha256	artifact_digest	pinned_ref
-stable	main	2026-03-16T13:00:00Z	v0.3.0	444444444444	amd64	${PLATFORM_CONTRACT_DIGEST}	custom	sha256:6666666666666666666666666666666666666666666666666666666666666666	sha256:5555555555555555555555555555555555555555555555555555555555555555	${CUSTOM_BUNDLE_PINNED_REF}
+channel	tag	created	version	revision	arch	platform_profile	platform_images_lock_sha256	artifact_digest	pinned_ref
+stable	main	2026-03-16T13:00:00Z	v0.3.0	444444444444	amd64	custom	sha256:6666666666666666666666666666666666666666666666666666666666666666	sha256:5555555555555555555555555555555555555555555555555555555555555555	${CUSTOM_BUNDLE_PINNED_REF}
 EOF_CUSTOM_INDEX
 
 cat > "${CUSTOM_BUNDLE_BUILD_DIR}/bundle/catalog.json" <<'EOF_CUSTOM_CATALOG'
@@ -193,9 +192,7 @@ cat > "${CUSTOM_BUNDLE_BUILD_DIR}/bundle/images.lock.json" <<'EOF_CUSTOM_IMAGES'
 }
 EOF_CUSTOM_IMAGES
 
-cat > "${CUSTOM_BUNDLE_BUILD_DIR}/bundle/manifest.env" <<EOF_CUSTOM_MANIFEST
-OURBOX_PLATFORM_CONTRACT_DIGEST=${PLATFORM_CONTRACT_DIGEST}
-EOF_CUSTOM_MANIFEST
+printf '\n' > "${CUSTOM_BUNDLE_BUILD_DIR}/bundle/manifest.env"
 
 cat > "${CUSTOM_BUNDLE_BUILD_DIR}/bundle/profile.env" <<'EOF_CUSTOM_PROFILE'
 OURBOX_PROFILE=custom
@@ -317,9 +314,7 @@ cat > "${MISMATCH_BUNDLE_BUILD_DIR}/bundle/images.lock.json" <<'EOF_MISMATCH_IMA
 }
 EOF_MISMATCH_IMAGES
 
-cat > "${MISMATCH_BUNDLE_BUILD_DIR}/bundle/manifest.env" <<'EOF_MISMATCH_MANIFEST'
-OURBOX_PLATFORM_CONTRACT_DIGEST=sha256:9999999999999999999999999999999999999999999999999999999999999999
-EOF_MISMATCH_MANIFEST
+printf '\n' > "${MISMATCH_BUNDLE_BUILD_DIR}/bundle/manifest.env"
 
 cat > "${MISMATCH_BUNDLE_BUILD_DIR}/bundle/profile.env" <<'EOF_MISMATCH_PROFILE'
 OURBOX_PROFILE=custom
@@ -345,21 +340,19 @@ cache_pull_oci_artifact() {
 
 SELECTED_APPLICATION_CATALOG_SOURCES_JSON="$(parse_custom_application_catalog_refs_json "${MISMATCH_LATEST_REF}")"
 APPLICATION_SOURCE_RESOLUTIONS_JSON="{}"
-if ( prepare_merged_application_catalog "catalog-defaults" "[]" ) >"${TMP_ROOT}/mismatch-latest.out" 2>"${TMP_ROOT}/mismatch-latest.err"; then
-  echo "expected a direct latest bundle ref with the wrong contract digest to fail" >&2
-  exit 1
-fi
+prepare_merged_application_catalog "catalog-defaults" "[]"
 
-grep -F "application catalog bundle contract digest mismatch" "${TMP_ROOT}/mismatch-latest.err" >/dev/null || {
-  echo "expected mismatch output to mention the contract digest failure" >&2
-  cat "${TMP_ROOT}/mismatch-latest.err" >&2
-  exit 1
-}
+python3 - <<'PY' "${MERGED_APPLICATION_SUMMARY_FILE}" "${MISMATCH_LATEST_PINNED_REF}"
+import json
+import sys
 
-grep -F "ghcr.io/example/custom-catalog:catalog-amd64" "${TMP_ROOT}/mismatch-latest.err" >/dev/null || {
-  echo "expected mismatch output to suggest the catalog index ref" >&2
-  cat "${TMP_ROOT}/mismatch-latest.err" >&2
-  exit 1
-}
+summary = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+source_catalogs = summary.get("source_catalogs", [])
+if len(source_catalogs) != 1:
+    raise SystemExit("expected one merged source catalog after direct bundle resolution")
+source = source_catalogs[0]
+if source.get("artifact_ref") != sys.argv[2]:
+    raise SystemExit(f"expected direct bundle artifact_ref to be {sys.argv[2]!r}, got {source.get('artifact_ref')!r}")
+PY
 
 printf '[%s] upstream catalog defaults smoke passed\n' "$(date -Is)"

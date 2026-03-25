@@ -99,14 +99,12 @@ implemented in phase one; some are mandatory direction even if follow-on phases
 - Moving channel tags are convenience inputs, not ground truth.
 - Catalog rows or explicit digest-pinned refs are the preferred truth surface.
 
-### 5. Host-side application catalog selection remains bounded by the OS contract
+### 5. Host-side application catalog selection remains bounded by target/runtime shape
 
 - If the operator selects one or more application catalogs that differ from the
   OS payload's baked bundle, every selected catalog bundle must match the
-  selected OS payload's `OURBOX_PLATFORM_CONTRACT_DIGEST`.
-- Architecture must also match the target slot.
-- The host must fail closed on contract mismatch, arch mismatch, or malformed
-  bundle shape.
+  selected target architecture and pass bundle-shape validation.
+- The host must fail closed on arch mismatch or malformed bundle shape.
 - The host must merge the selected catalogs into one effective catalog before
   application selection.
 - If multiple selected catalogs provide the same stable app identity, the host
@@ -143,7 +141,7 @@ implemented in phase one; some are mandatory direction even if follow-on phases
 - Installer substrate is target-owned boot/install runtime without selected
   mission bytes.
 - Mission media is host-composed substrate plus selected OS bytes, selected
-  airgap bytes, mission manifest, and provenance.
+  substrate bytes, mission manifest, and provenance.
 - Target adapters operate on this distinction, and the unified host tool must
   compose from a published target-owned substrate artifact rather than
   requiring a checked-out target repo in the normal operator path.
@@ -157,9 +155,9 @@ implemented in phase one; some are mandatory direction even if follow-on phases
   - compose tool identity
   - adapter identity
   - selected OS identity
+  - selected substrate identity
   - selected application catalog identities
   - selected application-set identity
-  - platform-contract identity
   - staged file paths and integrity hashes
   - install-mode fields relevant to target-side configuration prompts
 
@@ -178,7 +176,7 @@ implemented in phase one; some are mandatory direction even if follow-on phases
   - target id
   - supported media kinds
   - expected OS artifact kind/type
-  - expected airgap architecture
+  - expected substrate architecture
   - host prerequisites
   - whether output is a file or a raw block device
   - minimum media size estimate
@@ -234,7 +232,7 @@ implemented in phase one; some are mandatory direction even if follow-on phases
   browse/pull paths.
 - No Woodbox or Matchbox target-side install path may retain:
   - target-side OS catalog browsing
-  - target-side airgap catalog browsing
+  - target-side substrate catalog browsing
   - target-side `oras` bootstrapping or pulling
   - target-side registry login
   - target-side remote `install-defaults`
@@ -290,7 +288,7 @@ These are explicitly not goals of the installer effort.
 ### 1. One stick containing everything
 
 - The installer is not required to produce a universal stick carrying every
-  target, every OS build, and every airgap bundle.
+  target, every OS build, and every substrate bundle.
 - The intended model is mission-specific media, not a tiny portable warehouse.
 
 ### 2. Target-side artifact discovery as a product goal
@@ -355,7 +353,7 @@ The simplest phase-one interpretation is:
 - the target install must complete with no network connectivity
 - the unified repo exists
 - Woodbox and Matchbox are the current targets
-- the host can choose OS and airgap inputs while provisioning media
+- the host can choose OS and substrate inputs while provisioning media
 - the host can choose a selected app set from the chosen application catalog
 - the host can choose from catalogs and explicit refs
 - the host stages verified local bytes plus a mission manifest and the metadata
@@ -370,7 +368,7 @@ The simplest phase-one interpretation is:
 That last point is important:
 
 - phase one does not mean the final architecture is done
-- phase one does mean the unified tool already treats host-side OS and airgap
+- phase one does mean the unified tool already treats host-side OS and substrate
   choice as a requirement, not as an optional later idea
 - phase one creates no carve-out for target-side debug, fallback, or
   compatibility resolution paths

@@ -31,24 +31,6 @@ pull_bundle() {
   [[ -f "${out_dir}/extract/images.lock.json" ]] || die "published bundle missing images.lock.json after extract: ${ref}"
   [[ -f "${out_dir}/extract/profile.env" ]] || die "published bundle missing profile.env after extract: ${ref}"
   [[ -f "${out_dir}/extract/manifest.env" ]] || die "published bundle missing manifest.env after extract: ${ref}"
-
-  python3 - <<'PY' "${out_dir}/extract/manifest.env"
-import re
-import sys
-from pathlib import Path
-
-manifest = {}
-for raw_line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
-    line = raw_line.strip()
-    if not line or line.startswith("#"):
-        continue
-    key, value = line.split("=", 1)
-    manifest[key] = value
-
-digest = str(manifest.get("OURBOX_PLATFORM_CONTRACT_DIGEST", "")).strip()
-if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
-    raise SystemExit("published catalog bundle manifest is missing a valid OURBOX_PLATFORM_CONTRACT_DIGEST")
-PY
 }
 
 pull_bundle "${DEMO_CATALOG_REF}" "${TMP_ROOT}/demo"

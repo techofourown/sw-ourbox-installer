@@ -12,7 +12,7 @@
   "compose_entrypoint": "tools/media-adapter/compose-media.sh",
   "validate_entrypoint": "tools/media-adapter/validate-media.sh",
   "expected_os_artifact_type": "application/vnd.techofourown.ourbox.woodbox.os-payload.v1",
-  "expected_airgap_arch": "amd64",
+  "expected_substrate_arch": "amd64",
   "installer_substrate_payload_filename": "installer.iso",
   "official": {
     "os_repo": "ghcr.io/techofourown/ourbox-woodbox-os",
@@ -68,6 +68,6 @@
   "notes": [
     "Phase-one compose uses the published Woodbox installer substrate artifact while the unified host repo owns selection and mission assembly.",
     "Host-composed Woodbox mission media embeds the selected OS payload plus a synthesized application bundle built from one or more selected application catalogs and the mission manifest.",
-    "The Woodbox preinstall runtime consumes the embedded mission as the authoritative local source for OS provenance and selected airgap installation input."
+    "The Woodbox preinstall runtime consumes the embedded mission as the authoritative local source for OS provenance and selected substrate installation input."
   ]
 }

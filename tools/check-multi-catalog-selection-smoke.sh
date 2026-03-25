@@ -46,8 +46,8 @@ APPLICATION_CATALOG_SOURCES_JSON='[
   }
 ]'
 
-AIRGAP_REF=""
-AIRGAP_CHANNEL=""
+SUBSTRATE_REF=""
+SUBSTRATE_CHANNEL=""
 SELECTED_APPLICATION_CATALOG_SOURCES_JSON=""
 SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY=""
 determine_application_catalog_sources <<< $'\n'
@@ -60,8 +60,8 @@ determine_application_catalog_sources <<< $'\n'
   exit 1
 }
 
-AIRGAP_REF=""
-AIRGAP_CHANNEL=""
+SUBSTRATE_REF=""
+SUBSTRATE_CHANNEL=""
 SELECTED_APPLICATION_CATALOG_SOURCES_JSON=""
 SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY=""
 determine_application_catalog_sources <<< $'c\n1,2\n\n\n'
@@ -74,8 +74,8 @@ determine_application_catalog_sources <<< $'c\n1,2\n\n\n'
   exit 1
 }
 
-AIRGAP_REF=""
-AIRGAP_CHANNEL=""
+SUBSTRATE_REF=""
+SUBSTRATE_CHANNEL=""
 SELECTED_APPLICATION_CATALOG_SOURCES_JSON=""
 SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY=""
 determine_application_catalog_sources <<< $'c\n1\nghcr.io/example/custom-catalog:catalog-amd64\n\n'
@@ -88,8 +88,8 @@ determine_application_catalog_sources <<< $'c\n1\nghcr.io/example/custom-catalog
   exit 1
 }
 
-AIRGAP_REF=""
-AIRGAP_CHANNEL="hello-world,demo-apps"
+SUBSTRATE_REF=""
+SUBSTRATE_CHANNEL="hello-world,demo-apps"
 SELECTED_APPLICATION_CATALOG_SOURCES_JSON=""
 SELECTED_APPLICATION_CATALOG_SOURCE_DISPLAY=""
 determine_application_catalog_sources
