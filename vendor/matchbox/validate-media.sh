@@ -449,8 +449,10 @@ validate_substrate_bundle(staged_substrate_payload, staged_substrate_manifest)
 
 selected_applications = resolved.get("applications")
 supported_selection_modes = {"catalog-defaults", "all-apps", "custom"}
-if not isinstance(selected_applications, dict) or not selected_applications:
-    raise SystemExit("mission selected_applications must be present")
+if selected_applications is None:
+    pass
+elif not isinstance(selected_applications, dict) or not selected_applications:
+    raise SystemExit("mission selected_applications must be an object when present")
 else:
     catalog_id = str(selected_applications.get("catalog_id", "")).strip()
     catalog_name = str(selected_applications.get("catalog_name", "")).strip()

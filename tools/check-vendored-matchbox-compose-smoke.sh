@@ -130,7 +130,7 @@ printf '#!/bin/sh\nexit 0\n' > "${SUBSTRATE_SOURCE_DIR}/k3s/k3s"
 chmod +x "${SUBSTRATE_SOURCE_DIR}/k3s/k3s"
 printf 'fixture substrate images\n' > "${SUBSTRATE_SOURCE_DIR}/k3s/k3s-images-arm64.tar"
 printf '{"images":[]}\n' > "${SUBSTRATE_SOURCE_DIR}/platform/images.lock.json"
-printf 'PROFILE=demo-apps\n' > "${SUBSTRATE_SOURCE_DIR}/platform/profile.env"
+printf 'OURBOX_PLATFORM_PROFILE=demo-apps\n' > "${SUBSTRATE_SOURCE_DIR}/platform/profile.env"
 printf 'fixture image tar\n' > "${SUBSTRATE_SOURCE_DIR}/platform/images/platform-demo.tar"
 cat > "${SUBSTRATE_SOURCE_DIR}/manifest.env" <<'EOF'
 OURBOX_SUBSTRATE_SOURCE=https://github.com/techofourown/sw-ourbox-os
@@ -324,6 +324,28 @@ PY
 python3 "${ROOT}/tools/validate-mission-manifest.py" \
   "${ROOT}/schemas/mission-manifest.schema.json" \
   "${MISSION_DIR}/mission-manifest.json"
+
+bash "${ROOT}/vendor/matchbox/validate-media.sh" \
+  --mission-dir "${MISSION_DIR}" \
+  --os-payload "${OS_DIR}/os.img.xz" \
+  --os-meta-env "${OS_DIR}/os.meta.env"
+
+python3 - <<'PY' "${MISSION_DIR}/mission-manifest.json"
+import json
+import pathlib
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+with manifest_path.open("r", encoding="utf-8") as handle:
+    manifest = json.load(handle)
+
+manifest.get("requested", {}).pop("applications", None)
+manifest.get("resolved", {}).pop("applications", None)
+
+with manifest_path.open("w", encoding="utf-8") as handle:
+    json.dump(manifest, handle, indent=2)
+    handle.write("\n")
+PY
 
 bash "${ROOT}/vendor/matchbox/validate-media.sh" \
   --mission-dir "${MISSION_DIR}" \

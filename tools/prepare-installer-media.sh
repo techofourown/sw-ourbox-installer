@@ -1243,8 +1243,9 @@ verify_installer_substrate_cache_dir() {
 
 list_os_catalog_entries() {
   local catalog_tsv="$1"
+  local required_arch="${2:-}"
 
-  python3 - <<'PY' "${catalog_tsv}"
+  python3 - <<'PY' "${catalog_tsv}" "${required_arch}"
 import csv
 from datetime import datetime, timezone
 import re
@@ -1266,12 +1267,13 @@ def parse_created(value: str):
     except ValueError:
         return None
 
-catalog_tsv = sys.argv[1]
+catalog_tsv, required_arch = sys.argv[1:]
 rows = []
 with open(catalog_tsv, "r", encoding="utf-8") as handle:
     reader = csv.DictReader(handle, delimiter="\t")
     for row in reader:
         row_channel = (row.get("channel") or "").strip()
+        row_arch = (row.get("arch") or "").strip()
         tag = (row.get("tag") or "").strip()
         created = (row.get("created") or "").strip()
         version = (row.get("version") or "").strip()
@@ -1279,6 +1281,8 @@ with open(catalog_tsv, "r", encoding="utf-8") as handle:
         pinned_ref = (row.get("pinned_ref") or "").strip()
         created_key = parse_created(created)
         if created_key is None:
+            continue
+        if required_arch and row_arch and row_arch != required_arch:
             continue
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", artifact_digest):
             continue
@@ -1774,7 +1778,7 @@ select_substrate_ref_from_catalog_interactive() {
   fi
 
   catalog_tsv="$(find_pulled_file "${catalog_cache_dir}" "catalog.tsv")"
-  mapfile -t entries < <(list_os_catalog_entries "${catalog_tsv}")
+  mapfile -t entries < <(list_os_catalog_entries "${catalog_tsv}" "${EXPECTED_SUBSTRATE_ARCH}")
   if [[ "${#entries[@]}" -eq 0 ]]; then
     log "Catalog pulled (${SUBSTRATE_REPO}:${SUBSTRATE_CATALOG_TAG}) but contained no valid entries."
     return 1

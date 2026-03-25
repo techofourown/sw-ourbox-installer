@@ -83,6 +83,7 @@ mkdir -p "${SUBSTRATE_CATALOG_DIR}"
 
 {
   echo $'channel\tarch\ttag\tcreated\tversion\tartifact_digest\tpinned_ref'
+  printf 'beta\tarm64\tbeta-arm64\t2026-03-14T12:00:00Z\tv1.2.0\tsha256:%064x\t%s\n' 212 "$(make_pinned_ref "${SUBSTRATE_REPO}" 212)"
   printf 'beta\tamd64\tbeta\t2026-03-13T12:00:00Z\tv1.1.0\tsha256:%064x\t%s\n' 201 "${SUBSTRATE_BETA_PINNED}"
   printf 'stable\tamd64\tstable\t2026-03-12T12:00:00Z\tv1.0.0\tsha256:%064x\t%s\n' 200 "${SUBSTRATE_STABLE_PINNED}"
   printf 'nightly\tamd64\tnightly\t2026-03-11T12:00:00Z\tv0.11.0\tsha256:%064x\t%s\n' 211 "$(make_pinned_ref "${SUBSTRATE_REPO}" 211)"
