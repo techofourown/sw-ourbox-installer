@@ -134,6 +134,13 @@ cat > "${CATALOG_ONE_DIR}/catalog.json" <<'EOF_CATALOG_ONE'
       "default_backend": true,
       "image_names": [
         "landing"
+      ],
+      "services": [
+        {
+          "name": "landing",
+          "image": "landing",
+          "port": 80
+        }
       ]
     },
     {
@@ -152,6 +159,13 @@ cat > "${CATALOG_ONE_DIR}/catalog.json" <<'EOF_CATALOG_ONE'
       "default_backend": false,
       "image_names": [
         "hello-world"
+      ],
+      "services": [
+        {
+          "name": "hello-world",
+          "image": "hello-world",
+          "port": 80
+        }
       ]
     }
   ]
@@ -201,6 +215,13 @@ cat > "${CATALOG_TWO_DIR}/catalog.json" <<'EOF_CATALOG_TWO'
       "default_backend": false,
       "image_names": [
         "hello-world"
+      ],
+      "services": [
+        {
+          "name": "hello-world",
+          "image": "hello-world",
+          "port": 80
+        }
       ]
     }
   ]
@@ -267,6 +288,7 @@ python3 "${ROOT}/tools/merge-application-catalogs.py" \
   --selection-mode catalog-defaults \
   --source-resolutions-json "${APPLICATION_SOURCE_RESOLUTIONS_JSON}" \
   --out-catalog "${TMP_ROOT}/merged.catalog.json" \
+  --out-runtime-catalog "${TMP_ROOT}/merged.runtime.catalog.json" \
   --out-selected-apps "${TMP_ROOT}/merged.selected-apps.json" \
   --out-images-lock "${TMP_ROOT}/merged.images.lock.json" \
   --out-summary "${TMP_ROOT}/merged.summary.json"
@@ -298,21 +320,37 @@ python3 "${ROOT}/tools/merge-application-catalogs.py" \
   --selected-app-ids "techofourown/hello-world" \
   --source-resolutions-json "${APPLICATION_SOURCE_RESOLUTIONS_JSON}" \
   --out-catalog "${TMP_ROOT}/custom.catalog.json" \
+  --out-runtime-catalog "${TMP_ROOT}/custom.runtime.catalog.json" \
   --out-selected-apps "${TMP_ROOT}/custom.selected-apps.json" \
   --out-images-lock "${TMP_ROOT}/custom.images.lock.json" \
   --out-summary "${TMP_ROOT}/custom.summary.json"
 
-python3 - <<'PY' "${TMP_ROOT}/custom.selected-apps.json" "${TMP_ROOT}/custom.summary.json"
+python3 - <<'PY' "${TMP_ROOT}/custom.catalog.json" "${TMP_ROOT}/custom.runtime.catalog.json" "${TMP_ROOT}/custom.selected-apps.json" "${TMP_ROOT}/custom.summary.json"
 import json
 import sys
 
-selected = json.load(open(sys.argv[1], "r", encoding="utf-8"))
-summary = json.load(open(sys.argv[2], "r", encoding="utf-8"))
+catalog = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+runtime_catalog = json.load(open(sys.argv[2], "r", encoding="utf-8"))
+selected = json.load(open(sys.argv[3], "r", encoding="utf-8"))
+summary = json.load(open(sys.argv[4], "r", encoding="utf-8"))
 
 if selected["selected_app_ids"] != ["techofourown/hello-world"]:
     raise SystemExit("expected custom merged selected-apps to contain only the requested app")
 if len(summary.get("source_catalogs", [])) != 2:
     raise SystemExit("expected merged summary to retain both source catalogs")
+catalog_app_ids = [app["id"] for app in catalog["apps"]]
+if catalog_app_ids != ["techofourown/hello-world", "techofourown/landing"]:
+    raise SystemExit(f"expected full merged catalog to retain all apps, got {catalog_app_ids}")
+runtime_app_ids = [app["id"] for app in runtime_catalog["apps"]]
+if runtime_app_ids != ["techofourown/hello-world"]:
+    raise SystemExit(f"expected runtime catalog to retain only the selected app, got {runtime_app_ids}")
+if runtime_catalog["default_app_ids"] != ["techofourown/hello-world"]:
+    raise SystemExit(f"expected runtime catalog defaults to match selected apps, got {runtime_catalog['default_app_ids']}")
+services = runtime_catalog["apps"][0].get("services") or []
+if len(services) != 1:
+    raise SystemExit(f"expected runtime catalog to preserve selected app services, got {services}")
+if services[0]["image"] != "techofourown-hello-world--hello-world":
+    raise SystemExit(f"expected runtime service image rewrite to match merged image names, got {services[0]['image']}")
 PY
 
 IDENTICAL_CATALOG_ONE_DIR="${TMP_ROOT}/identical-catalog-one"

@@ -96,6 +96,7 @@ python3 "${ROOT}/tools/merge-application-catalogs.py" \
   --selection-mode catalog-defaults \
   --source-resolutions-json "${SOURCE_RESOLUTIONS_JSON}" \
   --out-catalog "${TMP_ROOT}/merged.catalog.json" \
+  --out-runtime-catalog "${TMP_ROOT}/merged.runtime.catalog.json" \
   --out-selected-apps "${TMP_ROOT}/merged.selected-apps.json" \
   --out-images-lock "${TMP_ROOT}/merged.images.lock.json" \
   --out-summary "${TMP_ROOT}/merged.summary.json"
@@ -142,6 +143,50 @@ for app in catalog["apps"]:
             raise SystemExit(
                 f"selected published app {app_id} service image {image_name!r} is not present in merged images lock"
             )
+PY
+
+python3 "${ROOT}/tools/merge-application-catalogs.py" \
+  --sources-json "${TMP_ROOT}/sources.json" \
+  --selection-mode custom \
+  --selected-app-ids "techofourown/hello-world" \
+  --source-resolutions-json "${SOURCE_RESOLUTIONS_JSON}" \
+  --out-catalog "${TMP_ROOT}/custom.catalog.json" \
+  --out-runtime-catalog "${TMP_ROOT}/custom.runtime.catalog.json" \
+  --out-selected-apps "${TMP_ROOT}/custom.selected-apps.json" \
+  --out-images-lock "${TMP_ROOT}/custom.images.lock.json" \
+  --out-summary "${TMP_ROOT}/custom.summary.json"
+
+python3 - <<'PY' "${TMP_ROOT}/custom.catalog.json" "${TMP_ROOT}/custom.runtime.catalog.json" "${TMP_ROOT}/custom.selected-apps.json" "${TMP_ROOT}/custom.images.lock.json"
+import json
+import sys
+
+catalog = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+runtime_catalog = json.load(open(sys.argv[2], "r", encoding="utf-8"))
+selected = json.load(open(sys.argv[3], "r", encoding="utf-8"))
+images_lock = json.load(open(sys.argv[4], "r", encoding="utf-8"))
+
+if "techofourown/ourbox-chat" not in {app["id"] for app in catalog["apps"]}:
+    raise SystemExit("expected full merged catalog to retain unselected published apps")
+runtime_app_ids = [app["id"] for app in runtime_catalog["apps"]]
+if runtime_app_ids != ["techofourown/hello-world"]:
+    raise SystemExit(f"expected runtime catalog to retain only the selected published app, got {runtime_app_ids}")
+if runtime_catalog["default_app_ids"] != ["techofourown/hello-world"]:
+    raise SystemExit(f"expected runtime defaults to match the selected app, got {runtime_catalog['default_app_ids']}")
+runtime_app = runtime_catalog["apps"][0]
+runtime_image_names = {str(item).strip() for item in runtime_app.get("image_names") or [] if str(item).strip()}
+image_names_in_lock = {str(image.get("name", "")).strip() for image in images_lock.get("images", [])}
+for service in runtime_app.get("services") or []:
+    image_name = str(service.get("image", "")).strip()
+    if image_name not in runtime_image_names:
+        raise SystemExit(
+            f"selected runtime published app service image {image_name!r} is not listed in runtime image_names"
+        )
+    if image_name not in image_names_in_lock:
+        raise SystemExit(
+            f"selected runtime published app service image {image_name!r} is not present in merged images lock"
+        )
+if selected["selected_app_ids"] != ["techofourown/hello-world"]:
+    raise SystemExit(f"unexpected custom selected app ids: {selected['selected_app_ids']}")
 PY
 
 printf '[%s] published catalog bundle smoke passed\n' "$(date -Is)"
