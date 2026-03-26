@@ -412,6 +412,28 @@ def build_merged_entries(
     return merged_by_uid, conflict_records
 
 
+def build_runtime_catalog(
+    merged_by_uid: dict[str, dict],
+    selected_app_ids: list[str],
+    merged_catalog_id: str,
+    merged_catalog_name: str,
+    source_catalogs: list[dict],
+) -> dict:
+    return {
+        "schema": 1,
+        "kind": "ourbox-application-catalog",
+        "catalog_id": merged_catalog_id,
+        "catalog_name": merged_catalog_name,
+        "catalog_description": "Target runtime application catalog derived from the host-selected app set.",
+        "default_app_ids": list(selected_app_ids),
+        "source_catalogs": source_catalogs,
+        "apps": [
+            {key: value for key, value in merged_by_uid[app_uid].items() if not key.startswith("_")}
+            for app_uid in selected_app_ids
+        ],
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Merge one or more application catalogs into a host-selected effective catalog."
@@ -423,6 +445,7 @@ def main() -> int:
     parser.add_argument("--source-resolutions-json", default="{}")
     parser.add_argument("--out-duplicates")
     parser.add_argument("--out-catalog")
+    parser.add_argument("--out-runtime-catalog")
     parser.add_argument("--out-selected-apps")
     parser.add_argument("--out-images-lock")
     parser.add_argument("--out-summary")
@@ -556,6 +579,13 @@ def main() -> int:
             for app_uid in all_app_uids
         ],
     }
+    runtime_catalog = build_runtime_catalog(
+        merged_by_uid,
+        selected_app_ids,
+        merged_catalog_id,
+        merged_catalog_name,
+        source_catalogs,
+    )
 
     selected_apps = {
         "schema": 1,
@@ -598,6 +628,11 @@ def main() -> int:
     }
 
     Path(args.out_catalog).write_text(json.dumps(merged_catalog, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if args.out_runtime_catalog:
+        Path(args.out_runtime_catalog).write_text(
+            json.dumps(runtime_catalog, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     Path(args.out_selected_apps).write_text(json.dumps(selected_apps, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     Path(args.out_images_lock).write_text(json.dumps(merged_images_lock, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     Path(args.out_summary).write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")

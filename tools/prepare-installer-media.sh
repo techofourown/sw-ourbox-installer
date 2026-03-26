@@ -3208,6 +3208,7 @@ PY
 
   mkdir -p "${merge_root}"
   MERGED_APPLICATION_CATALOG_FILE="${merge_root}/catalog.json"
+  MERGED_RUNTIME_APPLICATION_CATALOG_FILE="${merge_root}/runtime-catalog.json"
   MERGED_SELECTED_APPLICATIONS_FILE="${merge_root}/selected-apps.json"
   MERGED_IMAGES_LOCK_FILE="${merge_root}/images.lock.json"
   MERGED_APPLICATION_SUMMARY_FILE="${merge_root}/summary.json"
@@ -3219,6 +3220,7 @@ PY
     --source-resolutions-json "${APPLICATION_SOURCE_RESOLUTIONS_JSON}" \
     --out-duplicates "${duplicate_report_json}" \
     --out-catalog "${MERGED_APPLICATION_CATALOG_FILE}" \
+    --out-runtime-catalog "${MERGED_RUNTIME_APPLICATION_CATALOG_FILE}" \
     --out-selected-apps "${MERGED_SELECTED_APPLICATIONS_FILE}" \
     --out-images-lock "${MERGED_IMAGES_LOCK_FILE}" \
     --out-summary "${MERGED_APPLICATION_SUMMARY_FILE}"
@@ -3370,6 +3372,7 @@ synthesize_selected_application_bundle() {
   local base_substrate_dir="${extracted_payload_root}/substrate"
   local synthetic_root="${TMP_ROOT}/selected-application-bundle"
   local synthetic_images_dir="${synthetic_root}/platform/images"
+  local runtime_catalog_file="${MERGED_RUNTIME_APPLICATION_CATALOG_FILE:-${MERGED_APPLICATION_CATALOG_FILE}}"
   local image_dump=""
   local image_name=""
   local image_ref=""
@@ -3394,7 +3397,7 @@ synthesize_selected_application_bundle() {
   cp -a "${base_substrate_dir}/." "${synthetic_root}/"
   mkdir -p "${synthetic_images_dir}"
 
-  cp -f "${MERGED_APPLICATION_CATALOG_FILE}" "${synthetic_root}/platform/catalog.json"
+  cp -f "${runtime_catalog_file}" "${synthetic_root}/platform/catalog.json"
   cp -f "${MERGED_SELECTED_APPLICATIONS_FILE}" "${synthetic_root}/platform/selected-apps.json"
 
   image_dump="$(
@@ -3622,7 +3625,7 @@ printf '%s\n' "${SELECTED_OS_PINNED_REF}" > "${OS_STAGE_DIR}/artifact.ref"
 if [[ "${TARGET_SUPPORTS_APPLICATION_CATALOGS}" == "1" ]]; then
   synthesize_selected_application_bundle
   if [[ "${APPLICATION_CATALOG_PRESENT}" == "1" ]]; then
-    cp -f "${MERGED_APPLICATION_CATALOG_FILE}" "${SUBSTRATE_STAGE_DIR}/catalog.json"
+    cp -f "${MERGED_RUNTIME_APPLICATION_CATALOG_FILE:-${MERGED_APPLICATION_CATALOG_FILE}}" "${SUBSTRATE_STAGE_DIR}/catalog.json"
     cp -f "${MERGED_SELECTED_APPLICATIONS_FILE}" "${SUBSTRATE_STAGE_DIR}/selected-apps.json"
     cp -f "${MERGED_IMAGES_LOCK_FILE}" "${SUBSTRATE_STAGE_DIR}/application-images.lock.json"
   fi

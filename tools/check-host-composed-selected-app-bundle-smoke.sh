@@ -25,6 +25,7 @@ TMP_ROOT="${HARNESS_TMP_ROOT}"
 MISSION_ROOT="${TMP_ROOT}/mission"
 SUBSTRATE_STAGE_DIR="${MISSION_ROOT}/artifacts/substrate"
 MERGED_APPLICATION_CATALOG_FILE="${TMP_ROOT}/merged.catalog.json"
+MERGED_RUNTIME_APPLICATION_CATALOG_FILE="${TMP_ROOT}/runtime.catalog.json"
 MERGED_SELECTED_APPLICATIONS_FILE="${TMP_ROOT}/merged.selected-apps.json"
 MERGED_IMAGES_LOCK_FILE="${TMP_ROOT}/merged.images.lock.json"
 OS_PAYLOAD="${TMP_ROOT}/os-payload.tar.gz"
@@ -38,6 +39,41 @@ BAKED_SUBSTRATE_PROFILE="demo-apps"
 mkdir -p "${SUBSTRATE_STAGE_DIR}"
 
 cat > "${MERGED_APPLICATION_CATALOG_FILE}" <<'EOF'
+{
+  "schema": 1,
+  "kind": "ourbox-application-catalog",
+  "catalog_id": "demo-apps",
+  "catalog_name": "Demo Application Catalog",
+  "default_app_ids": [
+    "landing"
+  ],
+  "apps": [
+    {
+      "id": "landing",
+      "app_uid": "techofourown/landing",
+      "display_name": "Landing",
+      "image_names": [
+        "landing"
+      ]
+    },
+    {
+      "id": "techofourown/ourbox-chat",
+      "app_uid": "techofourown/ourbox-chat",
+      "display_name": "OurBox Chat",
+      "image_names": [],
+      "services": [
+        {
+          "name": "ourbox-chat",
+          "image": "ourbox-chat",
+          "port": 80
+        }
+      ]
+    }
+  ]
+}
+EOF
+
+cat > "${MERGED_RUNTIME_APPLICATION_CATALOG_FILE}" <<'EOF'
 {
   "schema": 1,
   "kind": "ourbox-application-catalog",
@@ -139,6 +175,14 @@ tar -xzf "${SUBSTRATE_STAGE_DIR}/ourbox-substrate.tar.gz" -C "${EXTRACT_DIR}"
 }
 [[ -f "${EXTRACT_DIR}/platform/selected-apps.json" ]] || {
   echo "synthetic substrate bundle is missing platform/selected-apps.json" >&2
+  exit 1
+}
+cmp -s "${MERGED_RUNTIME_APPLICATION_CATALOG_FILE}" "${EXTRACT_DIR}/platform/catalog.json" || {
+  echo "synthetic substrate bundle did not stage the selected runtime catalog" >&2
+  exit 1
+}
+cmp -s "${MERGED_APPLICATION_CATALOG_FILE}" "${EXTRACT_DIR}/platform/catalog.json" && {
+  echo "synthetic substrate bundle should not stage the full host-selection catalog" >&2
   exit 1
 }
 cmp -s "${PAYLOAD_ROOT}/platform/images.lock.json" "${EXTRACT_DIR}/platform/images.lock.json" || {
