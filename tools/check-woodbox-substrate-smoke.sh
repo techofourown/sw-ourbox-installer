@@ -86,11 +86,31 @@ cat > "${SUBSTRATE_DIR}/catalog.json" <<'EOF'
   "apps": [
     {
       "id": "landing",
-      "display_name": "Landing"
+      "display_name": "Landing",
+      "image_names": [
+        "landing"
+      ],
+      "services": [
+        {
+          "name": "landing",
+          "image": "landing",
+          "port": 80
+        }
+      ]
     },
     {
       "id": "dufs",
-      "display_name": "Dufs"
+      "display_name": "Dufs",
+      "image_names": [
+        "dufs"
+      ],
+      "services": [
+        {
+          "name": "dufs",
+          "image": "dufs",
+          "port": 5000
+        }
+      ]
     }
   ]
 }
@@ -104,6 +124,21 @@ cat > "${SUBSTRATE_DIR}/selected-apps.json" <<'EOF'
   "selected_app_ids": [
     "landing",
     "dufs"
+  ]
+}
+EOF
+cat > "${SUBSTRATE_DIR}/application-images.lock.json" <<'EOF'
+{
+  "schema": 1,
+  "images": [
+    {
+      "name": "landing",
+      "ref": "ghcr.io/example/landing@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "name": "dufs",
+      "ref": "ghcr.io/example/dufs@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    }
   ]
 }
 EOF
@@ -227,6 +262,7 @@ cat > "${MISSION_DIR}/mission-manifest.json" <<'EOF'
         "dufs"
       ],
       "catalog_relpath": "artifacts/substrate/catalog.json",
+      "images_lock_relpath": "artifacts/substrate/application-images.lock.json",
       "selection_relpath": "artifacts/substrate/selected-apps.json"
     },
     "installed_target_ssh": {
@@ -260,6 +296,47 @@ bash "${ROOT}/vendor/woodbox/validate-media.sh" \
   --mission-dir "${MISSION_DIR}" \
   --os-payload "${OS_DIR}/os-payload.tar.gz" \
   --os-meta-env "${OS_DIR}/os.meta.env"
+
+expect_validation_failure() {
+  local mission_dir="$1"
+  local description="$2"
+  local expected_message="$3"
+  local output=""
+  local status=0
+
+  set +e
+  output="$(
+    bash "${ROOT}/vendor/woodbox/validate-media.sh" \
+      --mission-dir "${mission_dir}" \
+      --os-payload "${OS_DIR}/os-payload.tar.gz" \
+      --os-meta-env "${OS_DIR}/os.meta.env" 2>&1
+  )"
+  status=$?
+  set -e
+
+  [[ "${status}" -ne 0 ]] || die "expected vendored woodbox validator to reject ${description}"
+  if [[ -n "${expected_message}" ]]; then
+    grep -Fq "${expected_message}" <<<"${output}" \
+      || die "vendored woodbox validator did not explain ${description}"
+  fi
+}
+
+BAD_MISSION_DIR="${TMP}/bad-woodbox-mission-missing-service-image"
+cp -a "${MISSION_DIR}" "${BAD_MISSION_DIR}"
+cat > "${BAD_MISSION_DIR}/artifacts/substrate/application-images.lock.json" <<'EOF'
+{
+  "schema": 1,
+  "images": [
+    {
+      "name": "landing",
+      "ref": "ghcr.io/example/landing@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ]
+}
+EOF
+expect_validation_failure "${BAD_MISSION_DIR}" \
+  "application images locks missing selected service images" \
+  ""
 
 printf 'set timeout=1\nmenuentry \"fixture\" {\n linux /casper/vmlinuz autoinstall ds=nocloud\\;s=file:///cdrom/nocloud/ ---\n}\n' \
   > "${SUBSTRATE_TREE}/boot/grub/grub.cfg"

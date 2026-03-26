@@ -130,7 +130,7 @@ printf '#!/bin/sh\nexit 0\n' > "${SUBSTRATE_SOURCE_DIR}/k3s/k3s"
 chmod +x "${SUBSTRATE_SOURCE_DIR}/k3s/k3s"
 printf 'fixture substrate images\n' > "${SUBSTRATE_SOURCE_DIR}/k3s/k3s-images-arm64.tar"
 printf '{"images":[]}\n' > "${SUBSTRATE_SOURCE_DIR}/platform/images.lock.json"
-printf 'PROFILE=demo-apps\n' > "${SUBSTRATE_SOURCE_DIR}/platform/profile.env"
+printf 'OURBOX_PLATFORM_PROFILE=demo-apps\n' > "${SUBSTRATE_SOURCE_DIR}/platform/profile.env"
 printf 'fixture image tar\n' > "${SUBSTRATE_SOURCE_DIR}/platform/images/platform-demo.tar"
 cat > "${SUBSTRATE_SOURCE_DIR}/manifest.env" <<'EOF'
 OURBOX_SUBSTRATE_SOURCE=https://github.com/techofourown/sw-ourbox-os
@@ -147,6 +147,54 @@ tar -C "${SUBSTRATE_SOURCE_DIR}" -czf "${SUBSTRATE_DIR}/ourbox-substrate.tar.gz"
 printf '%s  %s\n' "$(sha256sum "${SUBSTRATE_DIR}/ourbox-substrate.tar.gz" | awk '{print $1}')" "ourbox-substrate.tar.gz" \
   > "${SUBSTRATE_DIR}/ourbox-substrate.tar.gz.sha256"
 cp -f "${SUBSTRATE_SOURCE_DIR}/manifest.env" "${SUBSTRATE_DIR}/manifest.env"
+cat > "${SUBSTRATE_DIR}/catalog.json" <<'EOF'
+{
+  "schema": 1,
+  "kind": "ourbox-application-catalog",
+  "catalog_id": "demo-apps",
+  "catalog_name": "Demo Apps",
+  "default_app_ids": [
+    "landing"
+  ],
+  "apps": [
+    {
+      "id": "landing",
+      "image_names": [
+        "landing"
+      ],
+      "services": [
+        {
+          "name": "landing",
+          "image": "landing",
+          "port": 80
+        }
+      ]
+    }
+  ]
+}
+EOF
+cat > "${SUBSTRATE_DIR}/selected-apps.json" <<'EOF'
+{
+  "schema": 1,
+  "kind": "ourbox-selected-applications",
+  "catalog_id": "demo-apps",
+  "selection_mode": "custom",
+  "selected_app_ids": [
+    "landing"
+  ]
+}
+EOF
+cat > "${SUBSTRATE_DIR}/application-images.lock.json" <<'EOF'
+{
+  "schema": 1,
+  "images": [
+    {
+      "name": "landing",
+      "ref": "ghcr.io/example/landing@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ]
+}
+EOF
 
 python3 - <<'PY' "${MISSION_DIR}" "${ROOT}/vendor/matchbox/adapter.json"
 import hashlib
@@ -170,6 +218,9 @@ os_payload = mission_dir / "artifacts/os/os.img.xz"
 os_meta = mission_dir / "artifacts/os/os.meta.env"
 substrate_payload = mission_dir / "artifacts/substrate/ourbox-substrate.tar.gz"
 substrate_manifest = mission_dir / "artifacts/substrate/manifest.env"
+application_catalog = mission_dir / "artifacts/substrate/catalog.json"
+application_images_lock = mission_dir / "artifacts/substrate/application-images.lock.json"
+selected_apps = mission_dir / "artifacts/substrate/selected-apps.json"
 
 staged_files = []
 for path in sorted(mission_dir.rglob("*")):
@@ -265,6 +316,15 @@ manifest = {
             "manifest_relpath": substrate_manifest.relative_to(mission_dir).as_posix(),
             "present_in_selected_os_payload": False,
         },
+        "applications": {
+            "catalog_id": "demo-apps",
+            "catalog_name": "Demo Apps",
+            "selection_mode": "custom",
+            "selected_app_ids": ["landing"],
+            "catalog_relpath": application_catalog.relative_to(mission_dir).as_posix(),
+            "images_lock_relpath": application_images_lock.relative_to(mission_dir).as_posix(),
+            "selection_relpath": selected_apps.relative_to(mission_dir).as_posix(),
+        },
     },
     "staged_files": staged_files,
 }
@@ -278,10 +338,95 @@ python3 "${ROOT}/tools/validate-mission-manifest.py" \
   "${ROOT}/schemas/mission-manifest.schema.json" \
   "${MISSION_DIR}/mission-manifest.json"
 
-bash "${ROOT}/vendor/matchbox/validate-media.sh" \
-  --mission-dir "${MISSION_DIR}" \
-  --os-payload "${OS_DIR}/os.img.xz" \
-  --os-meta-env "${OS_DIR}/os.meta.env"
+validate_mission_dir() {
+  local mission_dir="$1"
+
+  bash "${ROOT}/vendor/matchbox/validate-media.sh" \
+    --mission-dir "${mission_dir}" \
+    --os-payload "${mission_dir}/artifacts/os/os.img.xz" \
+    --os-meta-env "${mission_dir}/artifacts/os/os.meta.env"
+}
+
+validate_mission_dir "${MISSION_DIR}"
+
+expect_validation_failure() {
+  local mission_dir="$1"
+  local description="$2"
+  local expected_message="$3"
+  local output=""
+  local status=0
+
+  set +e
+  output="$(
+    validate_mission_dir "${mission_dir}" 2>&1
+  )"
+  status=$?
+  set -e
+
+  [[ "${status}" -ne 0 ]] || die "expected vendored matchbox validator to reject ${description}"
+  if [[ -n "${expected_message}" ]]; then
+    grep -Fq "${expected_message}" <<<"${output}" \
+      || die "vendored matchbox validator did not explain ${description}"
+  fi
+}
+
+BAD_MISSION_DIR="${TMP}/bad-mission-missing-apps"
+cp -a "${MISSION_DIR}" "${BAD_MISSION_DIR}"
+python3 - <<'PY' "${BAD_MISSION_DIR}/mission-manifest.json"
+import json
+import pathlib
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+with manifest_path.open("r", encoding="utf-8") as handle:
+    manifest = json.load(handle)
+
+manifest.get("requested", {}).pop("applications", None)
+manifest.get("resolved", {}).pop("applications", None)
+
+with manifest_path.open("w", encoding="utf-8") as handle:
+    json.dump(manifest, handle, indent=2)
+    handle.write("\n")
+PY
+validate_mission_dir "${BAD_MISSION_DIR}"
+
+BAD_MISSION_DIR="${TMP}/bad-mission-partial-apps"
+cp -a "${MISSION_DIR}" "${BAD_MISSION_DIR}"
+python3 - <<'PY' "${BAD_MISSION_DIR}/mission-manifest.json"
+import json
+import pathlib
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+with manifest_path.open("r", encoding="utf-8") as handle:
+    manifest = json.load(handle)
+
+manifest["resolved"]["applications"].pop("selection_relpath", None)
+
+with manifest_path.open("w", encoding="utf-8") as handle:
+    json.dump(manifest, handle, indent=2)
+    handle.write("\n")
+PY
+expect_validation_failure "${BAD_MISSION_DIR}" \
+  "mission manifests with partial selected_applications" \
+  ""
+
+BAD_MISSION_DIR="${TMP}/bad-mission-missing-service-image"
+cp -a "${MISSION_DIR}" "${BAD_MISSION_DIR}"
+cat > "${BAD_MISSION_DIR}/artifacts/substrate/application-images.lock.json" <<'EOF'
+{
+  "schema": 1,
+  "images": [
+    {
+      "name": "not-landing",
+      "ref": "ghcr.io/example/landing@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ]
+}
+EOF
+expect_validation_failure "${BAD_MISSION_DIR}" \
+  "application images locks missing selected service images" \
+  ""
 
 SUBSTRATE_RAW="${TMP}/installer-substrate.img"
 SUBSTRATE_ARTIFACT="${TMP}/installer-substrate.img.xz"
@@ -325,6 +470,8 @@ VERIFY_ROOT_PART="$(find_installer_root_partition "${VERIFY_LOOPDEV}" "${VERIFY_
 [[ -n "${VERIFY_ROOT_PART}" ]] || die "failed to locate composed Matchbox installer root partition"
 ${SUDO} test -f "${VERIFY_MOUNT_DIR}/opt/ourbox/mission/mission-manifest.json" \
   || die "composed Matchbox media is missing embedded mission-manifest.json"
+${SUDO} test -f "${VERIFY_MOUNT_DIR}/opt/ourbox/mission/artifacts/substrate/application-images.lock.json" \
+  || die "composed Matchbox media is missing embedded application-images.lock.json"
 ${SUDO} cmp -s "${VERIFY_MOUNT_DIR}/opt/ourbox/mission/mission-manifest.json" \
   "${MISSION_DIR}/mission-manifest.json" \
   || die "embedded Matchbox mission manifest does not match the staged mission"
