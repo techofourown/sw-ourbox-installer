@@ -65,16 +65,26 @@ python3 "${ROOT}/tools/merge-application-catalogs.py" \
 SOURCE_RESOLUTIONS_JSON="$(
   python3 - <<'PY' "${TMP_ROOT}/duplicates.json"
 import json
+import json as json_module
 import sys
 
 duplicate_report = json.load(open(sys.argv[1], "r", encoding="utf-8"))
 for item in duplicate_report:
     if str(item.get("app_uid", "")).strip() != "techofourown/hello-world":
         continue
-    if bool(item.get("definitions_identical", False)):
-        print("{}")
-    else:
-        print('{"techofourown/hello-world":"hello-world"}')
+    chosen = ""
+    for candidate in item.get("candidates") or []:
+        catalog_id = str(candidate.get("catalog_id", "")).strip()
+        if catalog_id == "hello-world":
+            chosen = catalog_id
+            break
+    if not chosen:
+        candidates = item.get("candidates") or []
+        if candidates:
+            chosen = str(candidates[-1].get("catalog_id", "")).strip()
+    if not chosen:
+        raise SystemExit("duplicate hello-world app is missing candidate catalog ids")
+    print(json_module.dumps({"techofourown/hello-world": chosen}, sort_keys=True))
     raise SystemExit(0)
 
 print("{}")
@@ -90,14 +100,15 @@ python3 "${ROOT}/tools/merge-application-catalogs.py" \
   --out-images-lock "${TMP_ROOT}/merged.images.lock.json" \
   --out-summary "${TMP_ROOT}/merged.summary.json"
 
-python3 - <<'PY' "${TMP_ROOT}/merged.catalog.json" "${TMP_ROOT}/merged.selected-apps.json" "${TMP_ROOT}/merged.summary.json" "${SOURCE_RESOLUTIONS_JSON}"
+python3 - <<'PY' "${TMP_ROOT}/merged.catalog.json" "${TMP_ROOT}/merged.selected-apps.json" "${TMP_ROOT}/merged.images.lock.json" "${TMP_ROOT}/merged.summary.json" "${SOURCE_RESOLUTIONS_JSON}"
 import json
 import sys
 
 catalog = json.load(open(sys.argv[1], "r", encoding="utf-8"))
 selected = json.load(open(sys.argv[2], "r", encoding="utf-8"))
-summary = json.load(open(sys.argv[3], "r", encoding="utf-8"))
-expected_source_resolutions = json.loads(sys.argv[4])
+images_lock = json.load(open(sys.argv[3], "r", encoding="utf-8"))
+summary = json.load(open(sys.argv[4], "r", encoding="utf-8"))
+expected_source_resolutions = json.loads(sys.argv[5])
 
 app_ids = {app["id"] for app in catalog["apps"]}
 if "techofourown/hello-world" not in app_ids:
@@ -110,6 +121,27 @@ if selected["source_resolutions"] != expected_source_resolutions:
     raise SystemExit(f"unexpected source resolutions payload: {selected['source_resolutions']}")
 if len(summary.get("source_catalogs", [])) != 2:
     raise SystemExit("expected two published source catalogs in summary")
+
+selected_ids = set(selected["selected_app_ids"])
+image_names_in_lock = {str(image.get("name", "")).strip() for image in images_lock.get("images", [])}
+for app in catalog["apps"]:
+    app_id = str(app.get("id", "")).strip()
+    if app_id not in selected_ids:
+        continue
+    app_image_names = {str(item).strip() for item in (app.get("image_names") or []) if str(item).strip()}
+    services = app.get("services")
+    if not isinstance(services, list) or not services:
+        raise SystemExit(f"expected selected published app {app_id} to keep a non-empty services list")
+    for service in services:
+        image_name = str(service.get("image", "")).strip()
+        if image_name not in app_image_names:
+            raise SystemExit(
+                f"selected published app {app_id} service image {image_name!r} is not listed in image_names"
+            )
+        if image_name not in image_names_in_lock:
+            raise SystemExit(
+                f"selected published app {app_id} service image {image_name!r} is not present in merged images lock"
+            )
 PY
 
 printf '[%s] published catalog bundle smoke passed\n' "$(date -Is)"

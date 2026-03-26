@@ -36,6 +36,13 @@ cat > "${CATALOG_ONE_DIR}/catalog.json" <<'EOF_CATALOG_ONE'
       "default_backend": false,
       "image_names": [
         "hello-world"
+      ],
+      "services": [
+        {
+          "name": "hello-world",
+          "image": "hello-world",
+          "port": 80
+        }
       ]
     }
   ]
@@ -81,6 +88,13 @@ cat > "${CATALOG_TWO_DIR}/catalog.json" <<'EOF_CATALOG_TWO'
       "default_backend": false,
       "image_names": [
         "hello-world"
+      ],
+      "services": [
+        {
+          "name": "hello-world",
+          "image": "hello-world",
+          "port": 80
+        }
       ]
     }
   ]
@@ -146,30 +160,15 @@ python3 "${ROOT}/tools/merge-application-catalogs.py" \
   --out-catalog "${TMP_ROOT}/merged.catalog.json" \
   --out-selected-apps "${TMP_ROOT}/merged.selected-apps.json" \
   --out-images-lock "${TMP_ROOT}/merged.images.lock.json" \
-  --out-summary "${TMP_ROOT}/merged.summary.json"
+  --out-summary "${TMP_ROOT}/merged.summary.json" >"${TMP_ROOT}/missing-resolution.log" 2>&1 && {
+  echo "expected identical duplicates to require an explicit source resolution" >&2
+  exit 1
+}
 
-python3 - <<'PY' "${TMP_ROOT}/merged.catalog.json" "${TMP_ROOT}/merged.selected-apps.json" "${TMP_ROOT}/merged.summary.json"
-import json
-import sys
-
-catalog = json.load(open(sys.argv[1], "r", encoding="utf-8"))
-selected = json.load(open(sys.argv[2], "r", encoding="utf-8"))
-summary = json.load(open(sys.argv[3], "r", encoding="utf-8"))
-
-app = catalog["apps"][0]
-if app["selected_source_catalog_id"] != "catalog-b":
-    raise SystemExit(f"expected identical duplicate dedupe to keep the first selected source, got {app['selected_source_catalog_id']}")
-if selected["source_resolutions"] != {}:
-    raise SystemExit(f"expected no explicit source resolution for identical duplicates, got {selected['source_resolutions']}")
-conflicts = summary.get("conflicts", [])
-if len(conflicts) != 1:
-    raise SystemExit(f"expected one conflict record, got {len(conflicts)}")
-conflict = conflicts[0]
-if conflict["policy"] != "identical-definition-dedupe":
-    raise SystemExit(f"unexpected conflict policy: {conflict['policy']}")
-if conflict["selected_catalog_id"] != "catalog-b":
-    raise SystemExit(f"unexpected deduped source selection: {conflict}")
-PY
+grep -F "duplicate application source choices are required" "${TMP_ROOT}/missing-resolution.log" >/dev/null || {
+  cat "${TMP_ROOT}/missing-resolution.log" >&2
+  exit 1
+}
 
 python3 "${ROOT}/tools/merge-application-catalogs.py" \
   --sources-json "${TMP_ROOT}/sources.json" \
@@ -181,19 +180,29 @@ python3 "${ROOT}/tools/merge-application-catalogs.py" \
   --out-images-lock "${TMP_ROOT}/explicit.images.lock.json" \
   --out-summary "${TMP_ROOT}/explicit.summary.json"
 
-python3 - <<'PY' "${TMP_ROOT}/explicit.catalog.json" "${TMP_ROOT}/explicit.selected-apps.json" "${TMP_ROOT}/explicit.summary.json"
+python3 - <<'PY' "${TMP_ROOT}/explicit.catalog.json" "${TMP_ROOT}/explicit.selected-apps.json" "${TMP_ROOT}/explicit.images.lock.json" "${TMP_ROOT}/explicit.summary.json"
 import json
 import sys
 
 catalog = json.load(open(sys.argv[1], "r", encoding="utf-8"))
 selected = json.load(open(sys.argv[2], "r", encoding="utf-8"))
-summary = json.load(open(sys.argv[3], "r", encoding="utf-8"))
+images_lock = json.load(open(sys.argv[3], "r", encoding="utf-8"))
+summary = json.load(open(sys.argv[4], "r", encoding="utf-8"))
 
 app = catalog["apps"][0]
 if app["selected_source_catalog_id"] != "catalog-a":
-    raise SystemExit(f"expected explicit source choice to override identical duplicate dedupe, got {app['selected_source_catalog_id']}")
+    raise SystemExit(f"expected explicit source choice to pick catalog-a, got {app['selected_source_catalog_id']}")
 if selected["source_resolutions"] != {"techofourown/hello-world": "catalog-a"}:
     raise SystemExit(f"unexpected stored source resolutions: {selected['source_resolutions']}")
+if app["image_names"] != ["techofourown-hello-world--hello-world"]:
+    raise SystemExit(f"unexpected rewritten image names: {app['image_names']}")
+services = app.get("services") or []
+if len(services) != 1:
+    raise SystemExit(f"expected one rewritten service entry, got {services}")
+if services[0]["image"] != "techofourown-hello-world--hello-world":
+    raise SystemExit(f"expected service image to be rewritten, got {services[0]['image']}")
+if images_lock["images"][0]["name"] != "techofourown-hello-world--hello-world":
+    raise SystemExit(f"expected merged images lock to use the rewritten image name, got {images_lock['images'][0]['name']}")
 conflicts = summary.get("conflicts", [])
 if len(conflicts) != 1:
     raise SystemExit(f"expected one conflict record, got {len(conflicts)}")
@@ -202,6 +211,8 @@ if conflict["policy"] != "operator-selected-source":
     raise SystemExit(f"unexpected explicit conflict policy: {conflict['policy']}")
 if conflict["selected_catalog_id"] != "catalog-a":
     raise SystemExit(f"unexpected explicit source selection: {conflict}")
+if conflict["definitions_identical"] is not True:
+    raise SystemExit(f"expected explicit source record to retain identical-definition metadata: {conflict}")
 PY
 
 printf '[%s] identical duplicate app smoke passed\n' "$(date -Is)"
