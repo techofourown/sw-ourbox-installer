@@ -2396,8 +2396,6 @@ for item in duplicate_report:
     app_uid = str(item.get("app_uid", "")).strip()
     if not app_uid:
         continue
-    if bool(item.get("definitions_identical", False)):
-        continue
     if app_uid not in resolutions:
         print(app_uid)
 PY
@@ -2530,8 +2528,6 @@ lines = [
 for item in duplicate_report:
     app_uid = str(item.get("app_uid", "")).strip()
     if not app_uid:
-        continue
-    if bool(item.get("definitions_identical", False)):
         continue
     choices = ", ".join(
         f\"{candidate.get('catalog_id', '')} ({candidate.get('catalog_name', '')})\"

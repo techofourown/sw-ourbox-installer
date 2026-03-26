@@ -294,21 +294,6 @@ def select_candidate_for_app(
 
     identical = definitions_identical(ordered)
     selected_catalog_id = source_resolutions.get(app_uid, "").strip()
-    if not selected_catalog_id and identical:
-        chosen = ordered[0]
-        ordered_sources = sorted(ordered, key=lambda item: canonical_source_positions[canonical_source_key(item)])
-        ordered_sources = [chosen] + [item for item in ordered_sources if item is not chosen]
-        conflict_record = {
-            "type": "duplicate-app-source",
-            "app_uid": app_uid,
-            "selected_catalog_id": chosen["catalog_id"],
-            "selected_catalog_name": chosen["catalog_name"],
-            "available_catalog_ids": [candidate["catalog_id"] for candidate in ordered_sources],
-            "available_catalog_names": [candidate["catalog_name"] for candidate in ordered_sources],
-            "definitions_identical": True,
-            "policy": "identical-definition-dedupe",
-        }
-        return chosen, conflict_record
 
     if not selected_catalog_id:
         available = ", ".join(candidate["catalog_id"] for candidate in ordered)
@@ -465,7 +450,7 @@ def main() -> int:
     unresolved_duplicates = [
         item
         for item in duplicate_report
-        if not bool(item.get("definitions_identical", False)) and str(item["app_uid"]) not in source_resolutions
+        if str(item["app_uid"]) not in source_resolutions
     ]
     if unresolved_duplicates:
         raise SystemExit(render_unresolved_duplicate_error(unresolved_duplicates))
@@ -503,8 +488,10 @@ def main() -> int:
     for app_uid in selected_app_ids:
         app = merged_by_uid[app_uid]
         rewritten_names: list[str] = []
+        rewritten_name_by_original: dict[str, str] = {}
         for image_index, resolved_image in enumerate(app["_resolved_images"], start=1):
             image_ref = resolved_image["ref"]
+            original_name = resolved_image["name"]
             merged_name = ref_to_name.get(image_ref)
             if not merged_name:
                 base_name = sanitize_token(app_uid.replace("/", "--"))
@@ -527,8 +514,26 @@ def main() -> int:
                     if image_entry["name"] == merged_name and app_uid not in image_entry["used_by"]:
                         image_entry["used_by"].append(app_uid)
                         break
+            rewritten_name_by_original[original_name] = merged_name
             rewritten_names.append(merged_name)
         app["image_names"] = rewritten_names
+        services = app.get("services")
+        if isinstance(services, list):
+            rewritten_services = []
+            for service in services:
+                service_copy = dict(service)
+                service_image = str(service_copy.get("image", "")).strip()
+                if service_image:
+                    merged_service_image = rewritten_name_by_original.get(service_image)
+                    if not merged_service_image:
+                        service_name = str(service_copy.get("name", "")).strip() or "<unnamed>"
+                        raise SystemExit(
+                            f"selected app {app_uid} service {service_name} references image "
+                            f"{service_image!r} outside the merged image set"
+                        )
+                    service_copy["image"] = merged_service_image
+                rewritten_services.append(service_copy)
+            app["services"] = rewritten_services
 
     source_catalogs = canonical_source_catalogs
     if len(source_catalogs) == 1:

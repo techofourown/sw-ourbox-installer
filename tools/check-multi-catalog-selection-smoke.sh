@@ -314,3 +314,134 @@ if selected["selected_app_ids"] != ["techofourown/hello-world"]:
 if len(summary.get("source_catalogs", [])) != 2:
     raise SystemExit("expected merged summary to retain both source catalogs")
 PY
+
+IDENTICAL_CATALOG_ONE_DIR="${TMP_ROOT}/identical-catalog-one"
+IDENTICAL_CATALOG_TWO_DIR="${TMP_ROOT}/identical-catalog-two"
+mkdir -p "${IDENTICAL_CATALOG_ONE_DIR}" "${IDENTICAL_CATALOG_TWO_DIR}"
+
+cat > "${IDENTICAL_CATALOG_ONE_DIR}/catalog.json" <<'EOF_IDENTICAL_CATALOG_ONE'
+{
+  "schema": 1,
+  "kind": "ourbox-application-catalog",
+  "catalog_id": "catalog-b",
+  "catalog_name": "Catalog B",
+  "catalog_description": "first source in merge order",
+  "default_app_ids": [
+    "hello-world"
+  ],
+  "apps": [
+    {
+      "id": "hello-world",
+      "app_uid": "techofourown/hello-world",
+      "display_name": "Hello World",
+      "description": "shared hello-world definition",
+      "renderer": "hello-world",
+      "service_name": "hello-world",
+      "service_port": 80,
+      "host_template": "hello.{box_host}",
+      "path": "/",
+      "expected_status": 200,
+      "body_marker": "Hello, world.",
+      "route_description": "hello-world-root",
+      "default_backend": false,
+      "image_names": [
+        "hello-world"
+      ]
+    }
+  ]
+}
+EOF_IDENTICAL_CATALOG_ONE
+
+cat > "${IDENTICAL_CATALOG_ONE_DIR}/images.lock.json" <<'EOF_IDENTICAL_IMAGES_ONE'
+{
+  "schema": 1,
+  "images": [
+    {
+      "name": "hello-world",
+      "ref": "ghcr.io/example/hello-world@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ]
+}
+EOF_IDENTICAL_IMAGES_ONE
+
+cat > "${IDENTICAL_CATALOG_TWO_DIR}/catalog.json" <<'EOF_IDENTICAL_CATALOG_TWO'
+{
+  "schema": 1,
+  "kind": "ourbox-application-catalog",
+  "catalog_id": "catalog-a",
+  "catalog_name": "Catalog A",
+  "catalog_description": "second source in merge order",
+  "default_app_ids": [
+    "hello-world"
+  ],
+  "apps": [
+    {
+      "id": "hello-world",
+      "app_uid": "techofourown/hello-world",
+      "display_name": "Hello World",
+      "description": "shared hello-world definition",
+      "renderer": "hello-world",
+      "service_name": "hello-world",
+      "service_port": 80,
+      "host_template": "hello.{box_host}",
+      "path": "/",
+      "expected_status": 200,
+      "body_marker": "Hello, world.",
+      "route_description": "hello-world-root",
+      "default_backend": false,
+      "image_names": [
+        "hello-world"
+      ]
+    }
+  ]
+}
+EOF_IDENTICAL_CATALOG_TWO
+
+cat > "${IDENTICAL_CATALOG_TWO_DIR}/images.lock.json" <<'EOF_IDENTICAL_IMAGES_TWO'
+{
+  "schema": 1,
+  "images": [
+    {
+      "name": "hello-world",
+      "ref": "ghcr.io/example/hello-world@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ]
+}
+EOF_IDENTICAL_IMAGES_TWO
+
+cat > "${TMP_ROOT}/identical-sources.json" <<EOF_IDENTICAL_SOURCES
+[
+  {
+    "catalog_id": "catalog-b",
+    "catalog_name": "Catalog B",
+    "artifact_ref": "ghcr.io/example/sw-ourbox-catalog-b@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "artifact_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "catalog_path": "${IDENTICAL_CATALOG_ONE_DIR}/catalog.json",
+    "images_lock_path": "${IDENTICAL_CATALOG_ONE_DIR}/images.lock.json"
+  },
+  {
+    "catalog_id": "catalog-a",
+    "catalog_name": "Catalog A",
+    "artifact_ref": "ghcr.io/example/sw-ourbox-catalog-a@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifact_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "catalog_path": "${IDENTICAL_CATALOG_TWO_DIR}/catalog.json",
+    "images_lock_path": "${IDENTICAL_CATALOG_TWO_DIR}/images.lock.json"
+  }
+]
+EOF_IDENTICAL_SOURCES
+
+APPLICATION_SOURCE_RESOLUTIONS_JSON="{}"
+write_application_catalog_duplicate_report "${TMP_ROOT}/identical-sources.json" "${TMP_ROOT}/identical-duplicates.json"
+duplicate_prompt_output_file="${TMP_ROOT}/duplicate-identical-source-prompt.out"
+require_duplicate_application_source_choices "${TMP_ROOT}/identical-duplicates.json" <<< $'2\n' >"${duplicate_prompt_output_file}"
+duplicate_prompt_output="$(<"${duplicate_prompt_output_file}")"
+[[ "${APPLICATION_SOURCE_RESOLUTIONS_JSON}" == *'"techofourown/hello-world": "catalog-a"'* ]] || {
+  echo "expected identical duplicate application source prompt to record the chosen source catalog" >&2
+  exit 1
+}
+[[ "${duplicate_prompt_output}" == *"These catalog entries currently look identical"* ]] || {
+  echo "expected identical duplicate application source prompt to explain why it still requires a choice" >&2
+  exit 1
+}
+
+printf '[%s] multi-catalog selection smoke passed\n' "$(date -Is)"
