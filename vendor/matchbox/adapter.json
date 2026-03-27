@@ -62,6 +62,6 @@
   "notes": [
     "Matchbox mission media is now host-composed from a published installer substrate plus selected local mission artifacts.",
     "The target installer consumes only the embedded local mission directory and never performs runtime catalog browsing, install-defaults fetches, registry logins, or oras pulls.",
-    "Phase-two Matchbox compose stages the selected OS payload plus a selected arm64 substrate bundle from upstream catalogs."
+    "Phase-two Matchbox compose stages the selected OS payload plus a selected arm64 ourbox-substrate bundle from upstream catalogs."
   ]
 }
