@@ -13,11 +13,9 @@
   "validate_entrypoint": "tools/media-adapter/validate-media.sh",
   "expected_os_artifact_type": "application/vnd.techofourown.ourbox.woodbox.os-payload.v1",
   "expected_substrate_arch": "amd64",
-  "installer_substrate_payload_filename": "installer.iso",
   "official": {
     "os_repo": "ghcr.io/techofourown/ourbox-woodbox-os",
     "os_catalog_tag": "x86-catalog",
-    "install_defaults_ref": "ghcr.io/techofourown/sw-ourbox-os/install-defaults:stable",
     "os_channel_tags": {
       "stable": "x86-stable",
       "beta": "x86-beta",
@@ -28,16 +26,16 @@
       {
         "catalog_id": "demo-apps",
         "catalog_name": "Demo Application Catalog",
-        "description": "Concrete demo catalog consuming demo and hello-world apps.",
-        "catalog_ref": "ghcr.io/techofourown/sw-ourbox-catalog-demo:catalog-amd64",
-        "release_channel": "stable"
+        "description": "Default application catalog consuming demo and hello-world apps.",
+        "artifact_ref": "ghcr.io/techofourown/sw-ourbox-catalog-demo:latest",
+        "default_selected": true
       },
       {
         "catalog_id": "hello-world",
         "catalog_name": "Hello World Catalog",
         "description": "Hello-world-only catalog used to prove multi-catalog app sourcing.",
-        "catalog_ref": "ghcr.io/techofourown/sw-ourbox-catalog-hello-world:catalog-amd64",
-        "release_channel": "stable"
+        "artifact_ref": "ghcr.io/techofourown/sw-ourbox-catalog-hello-world:latest",
+        "default_selected": false
       }
     ],
     "installer_repo": "ghcr.io/techofourown/ourbox-woodbox-installer",
