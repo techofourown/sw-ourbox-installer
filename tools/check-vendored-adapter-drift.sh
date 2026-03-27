@@ -23,8 +23,13 @@ source "${PIN_FILE}"
 need_cmd curl
 need_cmd diff
 
-# Extract owner/repo from the GitHub URL, stripping any .git suffix.
-REPO_SLUG="${SOURCE_REPO#https://github.com/}"
+# Normalize SOURCE_REPO to owner/repo slug for raw.githubusercontent.com.
+# vendor-adapter.sh records the remote URL which may be HTTPS or SSH.
+case "${SOURCE_REPO}" in
+  https://github.com/*) REPO_SLUG="${SOURCE_REPO#https://github.com/}" ;;
+  git@github.com:*)     REPO_SLUG="${SOURCE_REPO#git@github.com:}" ;;
+  *)                    die "SOURCE_REPO must be a GitHub URL: ${SOURCE_REPO}" ;;
+esac
 REPO_SLUG="${REPO_SLUG%.git}"
 
 BASE_URL="https://raw.githubusercontent.com/${REPO_SLUG}/${SOURCE_REVISION}"

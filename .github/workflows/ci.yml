@@ -41,6 +41,7 @@ jobs:
           bash -n tools/check-upstream-catalog-defaults-smoke.sh
           bash -n tools/check-vendored-flash-helper-smoke.sh
           bash -n tools/check-vendored-adapter-drift.sh
+          bash -n tools/sync-vendored-adapters.sh
           bash -n tools/check-vendored-woodbox-pin.sh
           bash -n tools/check-woodbox-substrate-smoke.sh
           bash -n vendor/matchbox/flash-installer-media.sh
