@@ -1,0 +1,55 @@
+name: Sync Vendored Adapters
+
+# Checks upstream image repos (img-ourbox-woodbox, img-ourbox-matchbox) for
+# newer main HEAD revisions and auto-advances the vendored adapter files and
+# pin files when behind. Commits directly to main; no manual PR needed.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'CLAUDE.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-vendored-adapters
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Sync vendored adapters from image repos
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.SEMREL_APP_ID }}
+          private-key: ${{ secrets.SEMREL_APP_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Sync vendored adapters
+        run: bash tools/sync-vendored-adapters.sh
+
+      - name: Commit updated adapters if changed
+        if: env.VENDORED_ADAPTERS_CHANGED == '1'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add vendor/
+          git commit -m "chore: sync vendored adapters [skip ci]
+
+          Auto-advance vendored adapter files from upstream image repos."
+          git push origin main
