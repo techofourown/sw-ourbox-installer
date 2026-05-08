@@ -1,0 +1,104 @@
+name: CI Five-Part Markdown Report
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+
+jobs:
+  five-part-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build report header
+        run: |
+          GENERATED_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          cat > ci-five-part-report.md <<MD
+          # CI/CD Five-Part Report
+
+          - Workflow: `${{ github.workflow }}`
+          - Run ID: `${{ github.run_id }}`
+          - Commit: `${{ github.sha }}`
+          - Ref: `${{ github.ref }}`
+          - Trigger: `${{ github.event_name }}`
+          - Generated (UTC): `${GENERATED_UTC}`
+
+          MD
+
+      - name: Part 1 - Workflow lint
+        run: |
+          {
+            echo '## Part 1: Workflow lint'
+            echo ''
+            if command -v actionlint >/dev/null 2>&1; then
+              actionlint | sed 's/^/    /'
+            else
+              echo 'actionlint not preinstalled; using marketplace step in primary CI workflow.'
+            fi
+            echo ''
+          } >> ci-five-part-report.md
+
+      - name: Part 2 - Shell syntax checks
+        run: |
+          {
+            echo '## Part 2: Shell syntax checks'
+            echo ''
+            bash -n tools/prepare-installer-media.sh
+            bash -n tools/cache.sh
+            bash -n tools/vendor-adapter.sh
+            echo 'Shell syntax checks passed for core scripts.'
+            echo ''
+          } >> ci-five-part-report.md
+
+      - name: Part 3 - Python compile checks
+        run: |
+          {
+            echo '## Part 3: Python compile checks'
+            echo ''
+            python3 -m py_compile tools/validate-mission-manifest.py
+            python3 -m py_compile tools/merge-application-catalogs.py
+            python3 -m py_compile vendor/matchbox/strict-kv-metadata.py
+            python3 -m py_compile vendor/woodbox/strict-kv-metadata.py
+            echo 'Python compile checks passed.'
+            echo ''
+          } >> ci-five-part-report.md
+
+      - name: Part 4 - JSON validation
+        run: |
+          {
+            echo '## Part 4: JSON validation'
+            echo ''
+            python3 - <<'PY'
+            import json
+            from pathlib import Path
+
+            paths = [
+                Path('schemas/mission-manifest.schema.json'),
+                Path('vendor/matchbox/adapter.json'),
+                Path('vendor/woodbox/adapter.json'),
+            ]
+            for path in paths:
+                with path.open('r', encoding='utf-8') as handle:
+                    json.load(handle)
+            print('JSON validation passed for schema and adapter files.')
+            PY
+            echo ''
+          } >> ci-five-part-report.md
+
+      - name: Part 5 - Control-plane pin policy
+        run: |
+          {
+            echo '## Part 5: Control-plane mirrored-pin policy'
+            echo ''
+            bash tools/check-no-mirrored-upstream-pins.sh
+            echo ''
+          } >> ci-five-part-report.md
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-five-part-report-${{ github.run_id }}
+          path: ci-five-part-report.md
+          if-no-files-found: error
